@@ -1,0 +1,33 @@
+# User Credentials (NEVER COMMIT)
+google-services.json
+firebase-service-account.json
+*.p12
+*.pem
+*.key
+
+# .NET Build outputs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x88/
+[Bb]in/
+[Oo]bj/
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE and System Files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Docker local persistence
+docker-compose.override.yml
