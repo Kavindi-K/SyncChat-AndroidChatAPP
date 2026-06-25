@@ -1,33 +1,428 @@
 package com.syncchat.app.ui.home
 
+import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.firebase.auth.FirebaseAuth
+import com.syncchat.app.data.model.Conversation
+import com.syncchat.app.data.model.UserProfile
+import java.text.SimpleDateFormat
+import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen(
+    onConversationClick: (String, UserProfile) -> Unit,
+    onSignOut: () -> Unit,
+    homeViewModel: HomeViewModel = viewModel()
+) {
+    val conversations by homeViewModel.conversations.collectAsState()
+    val profiles by homeViewModel.userProfiles.collectAsState()
+    val searchResults by homeViewModel.searchResults.collectAsState()
+    val isSearching by homeViewModel.isSearching.collectAsState()
+
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email ?: ""
+    val currentUserName = FirebaseAuth.getInstance().currentUser?.displayName ?: "Me"
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = "SyncChat",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 22.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = currentUserEmail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onSignOut) {
+                        Icon(
+                            imageVector = Icons.Default.ExitToApp,
+                            contentDescription = "Sign Out",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF0F0F1A)
+                )
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showSearchDialog = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Start New Chat",
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        },
+        containerColor = Color(0xFF0F0F1A)
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            if (conversations.isEmpty()) {
+                // Empty state view
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "No conversations yet",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tap the + button to start chatting with someone!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.DarkGray,
+                        modifier = Modifier.padding(horizontal = 32.dp)
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(conversations) { conversation ->
+                        val otherUid = conversation.participantUids.firstOrNull { it != currentUserId }
+                        val otherProfile = profiles[otherUid] ?: UserProfile(
+                            uid = otherUid ?: "",
+                            displayName = "Loading...",
+                            email = ""
+                        )
+
+                        ConversationItem(
+                            conversation = conversation,
+                            otherProfile = otherProfile,
+                            currentUserId = currentUserId,
+                            onClick = {
+                                if (otherProfile.displayName != "Loading...") {
+                                    onConversationClick(conversation.id, otherProfile)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Start New Chat Dialog / Bottom Sheet
+            if (showSearchDialog) {
+                AlertDialog(
+                    onDismissRequest = {
+                        showSearchDialog = false
+                        searchQuery = ""
+                        homeViewModel.searchUsers("")
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        TextButton(onClick = {
+                            showSearchDialog = false
+                            searchQuery = ""
+                            homeViewModel.searchUsers("")
+                        }) {
+                            Text("Close", color = MaterialTheme.colorScheme.primary)
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = "New Conversation",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = Color.White
+                        )
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 400.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = {
+                                    searchQuery = it
+                                    homeViewModel.searchUsers(it)
+                                },
+                                placeholder = { Text("Search by name or email...") },
+                                leadingIcon = {
+                                    Icon(imageVector = Icons.Default.Search, contentDescription = null)
+                                },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = {
+                                            searchQuery = ""
+                                            homeViewModel.searchUsers("")
+                                        }) {
+                                            Icon(imageVector = Icons.Default.Close, contentDescription = null)
+                                        }
+                                    }
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = {
+                                    keyboardController?.hide()
+                                }),
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = Color.DarkGray,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            if (isSearching) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                }
+                            } else if (searchResults.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (searchQuery.length < 2) "Type at least 2 characters to search" else "No users found",
+                                        color = Color.Gray,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(searchResults) { user ->
+                                        UserSearchResultItem(
+                                            user = user,
+                                            onClick = {
+                                                homeViewModel.startConversation(user.uid) { conversationId ->
+                                                    showSearchDialog = false
+                                                    searchQuery = ""
+                                                    homeViewModel.searchUsers("")
+                                                    onConversationClick(conversationId, user)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    containerColor = Color(0xFF1E1E2C),
+                    shape = RoundedCornerShape(16.dp)
+                )
+            }
+        }
+    }
+}
 
 @Composable
-fun HomeScreen(onSignOut: () -> Unit) {
-    Column(
+fun ConversationItem(
+    conversation: Conversation,
+    otherProfile: UserProfile,
+    currentUserId: String,
+    onClick: () -> Unit
+) {
+    Row(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "Welcome to SyncChat!",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = onSignOut,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error
-            )
+        // Initials Avatar
+        val initials = if (otherProfile.displayName.isNotEmpty()) {
+            otherProfile.displayName.split(" ")
+                .mapNotNull { it.firstOrNull() }
+                .take(2)
+                .joinToString("")
+                .uppercase()
+        } else "?"
+
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                    )
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Text("Sign Out")
+            Text(
+                text = initials,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = otherProfile.displayName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Timestamp
+                val timeStr = conversation.lastMessage?.timestamp?.let {
+                    val format = SimpleDateFormat("h:mm a", Locale.getDefault())
+                    format.format(it)
+                } ?: ""
+
+                Text(
+                    text = timeStr,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Last message body
+            val lastMsgText = when {
+                conversation.lastMessage == null -> "No messages yet"
+                conversation.lastMessage.senderId == currentUserId -> "You: ${conversation.lastMessage.text}"
+                else -> conversation.lastMessage.text
+            }
+
+            Text(
+                text = lastMsgText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.LightGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun UserSearchResultItem(
+    user: UserProfile,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .background(Color(0xFF2E2E3E))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val initials = if (user.displayName.isNotEmpty()) {
+            user.displayName.split(" ")
+                .mapNotNull { it.firstOrNull() }
+                .take(2)
+                .joinToString("")
+                .uppercase()
+        } else "?"
+
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF6C63FF)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = initials,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column {
+            Text(
+                text = user.displayName,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                fontSize = 15.sp
+            )
+            Text(
+                text = user.email,
+                color = Color.Gray,
+                fontSize = 12.sp
+            )
         }
     }
 }

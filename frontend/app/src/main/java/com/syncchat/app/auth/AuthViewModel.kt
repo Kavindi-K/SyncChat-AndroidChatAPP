@@ -21,6 +21,31 @@ class AuthViewModel(
     var idToken: String? = null
         private set
 
+    init {
+        checkCurrentSession()
+    }
+
+    private fun checkCurrentSession() {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            try {
+                // Timeout token fetch after 3 seconds to prevent splash screen lockups
+                val token = kotlinx.coroutines.withTimeoutOrNull(3000) {
+                    authRepository.getIdToken(forceRefresh = false)
+                }
+                if (token != null) {
+                    idToken = token
+                    syncProfileToBackend(token)
+                    _authState.value = AuthState.LoggedIn(token)
+                } else {
+                    _authState.value = AuthState.LoggedOut
+                }
+            } catch (e: Exception) {
+                _authState.value = AuthState.LoggedOut
+            }
+        }
+    }
+
     fun signInWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
@@ -79,7 +104,7 @@ class AuthViewModel(
     }
 
     fun resetState() {
-        _authState.value = AuthState.Idle
+        _authState.value = AuthState.LoggedOut
     }
 
     /** Call before each API request. Returns cached or refreshed ID token. */
@@ -91,17 +116,20 @@ class AuthViewModel(
      * Syncs the Firebase user profile to the backend Firestore via POST /api/users/me.
      * Non-fatal: login still succeeds even if the backend sync fails.
      */
-    private suspend fun syncProfileToBackend(token: String) {
-        try {
-            val user = FirebaseAuth.getInstance().currentUser ?: return
-            apiRepository?.upsertProfile(
-                token = token,
-                displayName = user.displayName ?: "",
-                email = user.email ?: "",
-                photoUrl = user.photoUrl?.toString()
-            )
-        } catch (e: Exception) {
-            // Profile sync failure must not block login or registration
+    private fun syncProfileToBackend(token: String) {
+        viewModelScope.launch {
+            try {
+                val user = FirebaseAuth.getInstance().currentUser ?: return@launch
+                apiRepository?.upsertProfile(
+                    token = token,
+                    displayName = user.displayName ?: "",
+                    email = user.email ?: "",
+                    photoUrl = user.photoUrl?.toString()
+                )
+            } catch (e: Exception) {
+                // Profile sync failure must not block login or registration
+                android.util.Log.e("AuthViewModel", "Profile sync failed", e)
+            }
         }
     }
 }

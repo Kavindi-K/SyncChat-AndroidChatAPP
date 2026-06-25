@@ -17,10 +17,23 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Users collection: only the owner can read/write their own document
+    // Users collection: any logged-in user can read profiles; owners can write their own profile
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Conversations collection: users can read/write if they are a participant
+    match /conversations/{conversationId} {
+      allow read: if request.auth != null && request.auth.uid in resource.data.participantUids;
+      allow create: if request.auth != null && request.auth.uid in request.resource.data.participantUids;
+      allow update: if request.auth != null && request.auth.uid in resource.data.participantUids;
+
+      // Messages subcollection: users can read/write if they are a participant in the parent conversation
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null && 
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantUids;
+      }
     }
   }
 }

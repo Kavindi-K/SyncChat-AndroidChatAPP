@@ -10,6 +10,8 @@ using SyncChat.Application.UseCases.Messages;
 using SyncChat.Application.UseCases.Users;
 using SyncChat.Infrastructure.Repositories;
 using SyncChat.Infrastructure.Services;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var isTestEnv = builder.Environment.EnvironmentName == "Testing";
@@ -18,15 +20,25 @@ var isTestEnv = builder.Environment.EnvironmentName == "Testing";
 if (!isTestEnv)
 {
     var credentialPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
-    if (string.IsNullOrEmpty(credentialPath) && File.Exists("firebase-service-account.json"))
-        credentialPath = "firebase-service-account.json";
+    if (string.IsNullOrEmpty(credentialPath))
+    {
+        if (File.Exists("firebase-service-account.json"))
+            credentialPath = "firebase-service-account.json";
+        else if (File.Exists("../firebase-service-account.json"))
+            credentialPath = "../firebase-service-account.json";
+        else if (File.Exists("../../firebase-service-account.json"))
+            credentialPath = "../../firebase-service-account.json";
+    }
 
     if (FirebaseApp.DefaultInstance == null)
     {
         if (!string.IsNullOrEmpty(credentialPath) && File.Exists(credentialPath))
         {
+            var fullPath = Path.GetFullPath(credentialPath);
+            Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", fullPath);
+
 #pragma warning disable CS0618 // GoogleCredential.FromStream — no non-deprecated alternative for AppOptions
-            using var stream = File.OpenRead(credentialPath);
+            using var stream = File.OpenRead(fullPath);
             FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromStream(stream) });
 #pragma warning restore CS0618
         }
@@ -76,6 +88,18 @@ builder.Services.AddScoped<CreateConversationUseCase>();
 builder.Services.AddScoped<SendMessageUseCase>();
 builder.Services.AddScoped<GetMessagesUseCase>();
 
+// Configure Rate Limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("messagePolicy", opt =>
+    {
+        opt.PermitLimit = 60;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 0;
+    });
+});
+
 // Register Firestore (only created when first resolved — safe for tests since repositories are replaced)
 if (!isTestEnv)
 {
@@ -99,6 +123,7 @@ var app = builder.Build();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseStaticFiles();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {

@@ -19,8 +19,11 @@ import com.syncchat.app.auth.FirebaseAuthRepository
 import com.syncchat.app.data.api.RetrofitApiRepository
 import com.syncchat.app.ui.auth.LoginScreen
 import com.syncchat.app.ui.auth.RegisterScreen
+import com.syncchat.app.ui.auth.SplashScreen
 import com.syncchat.app.ui.home.HomeScreen
 import com.syncchat.app.ui.theme.SyncChatTheme
+import com.syncchat.app.ui.chat.ChatScreen
+import com.syncchat.app.data.model.UserProfile
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 
@@ -49,33 +52,66 @@ class MainActivity : ComponentActivity() {
                 val authState by authViewModel.authState.collectAsState()
                 var showRegister by remember { mutableStateOf(false) }
 
-                when {
-                    authState is AuthState.LoggedIn -> {
-                        HomeScreen(onSignOut = { authViewModel.signOut() })
+                var activeConversationId by remember { mutableStateOf<String?>(null) }
+                var activeConversationUser by remember { mutableStateOf<UserProfile?>(null) }
+
+                // Auto-clear navigation when signed out
+                LaunchedEffect(authState) {
+                    if (authState !is AuthState.LoggedIn) {
+                        activeConversationId = null
+                        activeConversationUser = null
                     }
-                    showRegister -> {
-                        RegisterScreen(
-                            viewModel = authViewModel,
-                            onNavigateToLogin = {
-                                authViewModel.resetState()
-                                showRegister = false
-                            }
-                        )
-                        // Auto-navigate to home when registration succeeds
-                        LaunchedEffect(authState) {
-                            if (authState is AuthState.LoggedIn) showRegister = false
+                }
+
+                when (authState) {
+                    is AuthState.Idle, is AuthState.Loading -> {
+                        SplashScreen()
+                    }
+                    is AuthState.LoggedIn -> {
+                        val convId = activeConversationId
+                        val otherUser = activeConversationUser
+                        if (convId != null && otherUser != null) {
+                            ChatScreen(
+                                conversationId = convId,
+                                otherUser = otherUser,
+                                onBackClick = {
+                                    activeConversationId = null
+                                    activeConversationUser = null
+                                }
+                            )
+                        } else {
+                            HomeScreen(
+                                onConversationClick = { id, user ->
+                                    activeConversationId = id
+                                    activeConversationUser = user
+                                },
+                                onSignOut = { authViewModel.signOut() }
+                            )
                         }
                     }
                     else -> {
-                        LoginScreen(
-                            viewModel = authViewModel,
-                            onLoginSuccess = { },
-                            onGoogleSignIn = { launchGoogleSignIn() },
-                            onNavigateToRegister = {
-                                authViewModel.resetState()
-                                showRegister = true
+                        if (showRegister) {
+                            RegisterScreen(
+                                viewModel = authViewModel,
+                                onNavigateToLogin = {
+                                    authViewModel.resetState()
+                                    showRegister = false
+                                }
+                            )
+                            LaunchedEffect(authState) {
+                                if (authState is AuthState.LoggedIn) showRegister = false
                             }
-                        )
+                        } else {
+                            LoginScreen(
+                                viewModel = authViewModel,
+                                onLoginSuccess = { },
+                                onGoogleSignIn = { launchGoogleSignIn() },
+                                onNavigateToRegister = {
+                                    authViewModel.resetState()
+                                    showRegister = true
+                                }
+                            )
+                        }
                     }
                 }
             }
