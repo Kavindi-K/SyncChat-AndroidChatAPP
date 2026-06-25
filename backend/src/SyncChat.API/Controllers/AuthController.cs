@@ -1,7 +1,7 @@
 using FirebaseAdmin.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using SyncChat.API.Repositories;
+using SyncChat.Application.Interfaces;
 
 namespace SyncChat.API.Controllers;
 

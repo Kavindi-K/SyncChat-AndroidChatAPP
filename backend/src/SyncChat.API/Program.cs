@@ -1,9 +1,15 @@
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Google.Cloud.Firestore;
+using Microsoft.OpenApi.Models;
 using SyncChat.API.Authentication;
-using SyncChat.API.Repositories;
-using SyncChat.API.Services;
+using SyncChat.API.Middleware;
+using SyncChat.Application.Interfaces;
+using SyncChat.Application.UseCases.Conversations;
+using SyncChat.Application.UseCases.Messages;
+using SyncChat.Application.UseCases.Users;
+using SyncChat.Infrastructure.Repositories;
+using SyncChat.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 var isTestEnv = builder.Environment.EnvironmentName == "Testing";
@@ -34,11 +40,43 @@ if (!isTestEnv)
 // 2. Register services
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "SyncChat API", Version = "v1" });
+    
+    var securityScheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "Enter JWT Bearer token: `Bearer {your_token}`",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        Reference = new OpenApiReference
+        {
+            Id = "Bearer",
+            Type = ReferenceType.SecurityScheme
+        }
+    };
+    
+    c.AddSecurityDefinition("Bearer", securityScheme);
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        { securityScheme, Array.Empty<string>() }
+    });
+});
 
 // Register Firebase auth service (can be replaced by mock in tests)
 builder.Services.AddSingleton<IFirebaseAuthService, FirebaseAuthService>();
 
-// Register Firestore (only created when first resolved — safe for tests since IUserRepository is replaced)
+// Register Application UseCases
+builder.Services.AddScoped<UserSearchUseCase>();
+builder.Services.AddScoped<CreateConversationUseCase>();
+builder.Services.AddScoped<SendMessageUseCase>();
+builder.Services.AddScoped<GetMessagesUseCase>();
+
+// Register Firestore (only created when first resolved — safe for tests since repositories are replaced)
 if (!isTestEnv)
 {
     builder.Services.AddSingleton(sp =>
@@ -46,7 +84,9 @@ if (!isTestEnv)
         var projectId = builder.Configuration["Firebase:ProjectId"] ?? "syncchat-b0889";
         return FirestoreDb.Create(projectId);
     });
-    builder.Services.AddScoped<IUserRepository, UserRepository>();
+    builder.Services.AddScoped<IUserRepository, FirestoreUserRepository>();
+    builder.Services.AddScoped<IConversationRepository, FirestoreConversationRepository>();
+    builder.Services.AddScoped<IMessageRepository, FirestoreMessageRepository>();
 }
 
 // 3. Configure Firebase Authentication scheme
@@ -57,8 +97,19 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+app.UseMiddleware<GlobalExceptionMiddleware>();
+app.UseStaticFiles();
+
 if (app.Environment.IsDevelopment())
+{
     app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "SyncChat API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 // 4. Auth middlewares (order matters!)
 app.UseAuthentication();

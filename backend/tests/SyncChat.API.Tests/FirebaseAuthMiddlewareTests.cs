@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using SyncChat.API.Services;
+using SyncChat.Application.Interfaces;
 
 namespace SyncChat.API.Tests;
 
