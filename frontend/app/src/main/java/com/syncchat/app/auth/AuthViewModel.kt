@@ -38,6 +38,23 @@ class AuthViewModel(
         }
     }
 
+    fun signUp(displayName: String, email: String, password: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            try {
+                idToken = authRepository.signUpWithEmail(displayName, email, password)
+                syncProfileToBackend(idToken!!)
+                _authState.value = AuthState.LoggedIn(idToken!!)
+            } catch (e: AuthException.EmailAlreadyExists) {
+                _authState.value = AuthState.Error(e.message ?: "Email already in use")
+            } catch (e: AuthException.NetworkError) {
+                _authState.value = AuthState.Error(e.message ?: "Network error")
+            } catch (e: AuthException) {
+                _authState.value = AuthState.Error(e.message ?: "Registration failed")
+            }
+        }
+    }
+
     fun signInWithGoogle(googleIdToken: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
@@ -61,6 +78,10 @@ class AuthViewModel(
         }
     }
 
+    fun resetState() {
+        _authState.value = AuthState.Idle
+    }
+
     /** Call before each API request. Returns cached or refreshed ID token. */
     suspend fun getIdToken(): String? {
         return authRepository.getIdToken(forceRefresh = false)
@@ -80,7 +101,7 @@ class AuthViewModel(
                 photoUrl = user.photoUrl?.toString()
             )
         } catch (e: Exception) {
-            // Profile sync failure must not block login
+            // Profile sync failure must not block login or registration
         }
     }
 }

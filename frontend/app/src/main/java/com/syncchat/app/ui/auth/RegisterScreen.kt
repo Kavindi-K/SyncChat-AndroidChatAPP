@@ -13,23 +13,20 @@ import com.syncchat.app.auth.AuthState
 import com.syncchat.app.auth.AuthViewModel
 
 @Composable
-fun LoginScreen(
+fun RegisterScreen(
     viewModel: AuthViewModel,
-    onLoginSuccess: () -> Unit,
-    onGoogleSignIn: () -> Unit,
-    onNavigateToRegister: () -> Unit
+    onNavigateToLogin: () -> Unit
 ) {
     val authState by viewModel.authState.collectAsState()
 
+    var displayName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var passwordMismatch by remember { mutableStateOf(false) }
 
-    // Navigate to Home when login succeeds
-    LaunchedEffect(authState) {
-        if (authState is AuthState.LoggedIn) {
-            onLoginSuccess()
-        }
-    }
+    // Reset error when navigating back
+    LaunchedEffect(Unit) { viewModel.resetState() }
 
     Column(
         modifier = Modifier
@@ -39,12 +36,22 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "SyncChat",
+            text = "Create Account",
             style = MaterialTheme.typography.displaySmall,
             color = MaterialTheme.colorScheme.primary
         )
 
         Spacer(modifier = Modifier.height(40.dp))
+
+        OutlinedTextField(
+            value = displayName,
+            onValueChange = { displayName = it },
+            label = { Text("Display Name") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = email,
@@ -67,9 +74,30 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = { confirmPassword = it; passwordMismatch = false },
+            label = { Text("Confirm Password") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            isError = passwordMismatch,
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Error message
+        if (passwordMismatch) {
+            Text(
+                text = "Passwords do not match",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         if (authState is AuthState.Error) {
             Text(
                 text = (authState as AuthState.Error).message,
@@ -82,8 +110,17 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         Button(
-            onClick = { viewModel.signInWithEmail(email, password) },
-            enabled = authState !is AuthState.Loading && email.isNotBlank() && password.isNotBlank(),
+            onClick = {
+                if (password != confirmPassword) {
+                    passwordMismatch = true
+                    return@Button
+                }
+                viewModel.signUp(displayName, email, password)
+            },
+            enabled = authState !is AuthState.Loading
+                    && displayName.isNotBlank()
+                    && email.isNotBlank()
+                    && password.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
             if (authState is AuthState.Loading) {
@@ -93,24 +130,14 @@ fun LoginScreen(
                     strokeWidth = 2.dp
                 )
             } else {
-                Text("Sign In")
+                Text("Create Account")
             }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onGoogleSignIn,
-            enabled = authState !is AuthState.Loading,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Sign in with Google")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TextButton(onClick = onNavigateToRegister) {
-            Text("Don't have an account? Create one")
+        TextButton(onClick = onNavigateToLogin) {
+            Text("Already have an account? Sign In")
         }
     }
 }
