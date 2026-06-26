@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -23,12 +24,24 @@ public class IntegrationTests : IAsyncLifetime
     private readonly WebApplicationFactory<Program> _factory;
     private readonly Mock<IFirebaseAuthService> _mockAuthService;
     private FirestoreDb? _db;
-    private const string ProjectId = "syncchat-test-project";
+    private const string ProjectId = "syncchat-b0889";
 
     public IntegrationTests()
     {
         // Point Firestore SDK to local emulator
         Environment.SetEnvironmentVariable("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080");
+
+        // Set credentials path to bypass initialization checks
+        var credentialPath = "firebase-service-account.json";
+        if (!File.Exists(credentialPath)) credentialPath = "../firebase-service-account.json";
+        if (!File.Exists(credentialPath)) credentialPath = "../../firebase-service-account.json";
+        if (!File.Exists(credentialPath)) credentialPath = "../../../firebase-service-account.json";
+        if (!File.Exists(credentialPath)) credentialPath = "../../../../firebase-service-account.json";
+        if (!File.Exists(credentialPath)) credentialPath = "../../../../../firebase-service-account.json";
+        if (File.Exists(credentialPath))
+        {
+            Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", Path.GetFullPath(credentialPath));
+        }
 
         _mockAuthService = new Mock<IFirebaseAuthService>();
 

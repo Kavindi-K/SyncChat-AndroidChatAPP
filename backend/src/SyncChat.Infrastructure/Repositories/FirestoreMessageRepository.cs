@@ -63,6 +63,16 @@ public class FirestoreMessageRepository : IMessageRepository
             .ToList();
     }
 
+    public async Task MarkMessageAsReadAsync(string conversationId, string messageId, string userId)
+    {
+        var docRef = _db.Collection("conversations")
+            .Document(conversationId)
+            .Collection("messages")
+            .Document(messageId);
+
+        await docRef.UpdateAsync("readBy", FieldValue.ArrayUnion(userId));
+    }
+
     private static Message MapSnapshotToMessage(string conversationId, DocumentSnapshot snapshot)
     {
         var id = snapshot.Id;

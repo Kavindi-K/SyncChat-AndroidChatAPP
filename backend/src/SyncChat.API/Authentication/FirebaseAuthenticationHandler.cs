@@ -24,16 +24,24 @@ public class FirebaseAuthenticationHandler : AuthenticationHandler<FirebaseAuthe
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        if (!Request.Headers.TryGetValue("Authorization", out var headerValues))
-            return AuthenticateResult.Fail("Missing Authorization Header");
+        string? token = null;
 
-        var header = headerValues.ToString();
-        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return AuthenticateResult.Fail("Invalid Authorization Header Format");
+        if (Request.Headers.TryGetValue("Authorization", out var headerValues))
+        {
+            var header = headerValues.ToString();
+            if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                token = header["Bearer ".Length..].Trim();
+            }
+        }
 
-        var token = header["Bearer ".Length..].Trim();
+        if (string.IsNullOrEmpty(token) && Request.Query.TryGetValue("access_token", out var queryValues))
+        {
+            token = queryValues.ToString();
+        }
+
         if (string.IsNullOrEmpty(token))
-            return AuthenticateResult.Fail("Empty Bearer Token");
+            return AuthenticateResult.Fail("Missing or Empty Authentication Token");
 
         try
         {

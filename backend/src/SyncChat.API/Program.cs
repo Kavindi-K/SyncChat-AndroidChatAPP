@@ -3,6 +3,7 @@ using Google.Apis.Auth.OAuth2;
 using Google.Cloud.Firestore;
 using Microsoft.OpenApi.Models;
 using SyncChat.API.Authentication;
+using SyncChat.API.Hubs;
 using SyncChat.API.Middleware;
 using SyncChat.Application.Interfaces;
 using SyncChat.Application.UseCases.Conversations;
@@ -114,6 +115,7 @@ if (!isTestEnv)
 }
 
 // 3. Configure Firebase Authentication scheme
+builder.Services.AddSignalR();
 builder.Services.AddAuthentication("Firebase")
     .AddScheme<FirebaseAuthenticationOptions, FirebaseAuthenticationHandler>("Firebase", null);
 
@@ -141,6 +143,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ChatHub>("/hubs/chat");
 
 app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }))
    .WithName("GetHealth")

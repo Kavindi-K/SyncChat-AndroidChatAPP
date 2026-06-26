@@ -9,4 +9,5 @@ public interface IMessageRepository
 {
     Task<Message> SaveMessageAsync(Message message);
     Task<List<Message>> GetMessagesAsync(string conversationId, DateTime? cursor, int limit);
+    Task MarkMessageAsReadAsync(string conversationId, string messageId, string userId);
 }
