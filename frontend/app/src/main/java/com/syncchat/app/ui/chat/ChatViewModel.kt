@@ -14,11 +14,16 @@ import com.syncchat.app.auth.AuthRepository
 import com.syncchat.app.auth.FirebaseAuthRepository
 import com.syncchat.app.data.api.ApiRepository
 import com.syncchat.app.data.api.RetrofitApiRepository
+import com.syncchat.app.data.local.AppDatabase
+import com.syncchat.app.data.local.entities.CachedMessage
 import com.syncchat.app.data.model.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -28,15 +33,22 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 class ChatViewModel(
     private val conversationId: String,
+    private val currentUserId: String,
     private val apiRepository: ApiRepository = RetrofitApiRepository(),
-    private val authRepository: AuthRepository = FirebaseAuthRepository()
+    private val authRepository: AuthRepository = FirebaseAuthRepository(),
+    private val database: AppDatabase
 ) : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
-    private val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    private val _messages = MutableStateFlow<List<Message>>(emptyList())
-    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
+    // UI state flow powered by Room database flow (instant update)
+    val messages: StateFlow<List<Message>> = database.messageDao().getMessagesForConversationFlow(conversationId)
+        .map { list -> list.map { it.toDomain() } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
@@ -79,7 +91,12 @@ class ChatViewModel(
                         Log.e("ChatViewModel", "Error parsing message doc ${doc.id}", e)
                     }
                 }
-                _messages.value = list
+                
+                // Save messages to Room in background
+                viewModelScope.launch(Dispatchers.IO) {
+                    val cached = list.map { CachedMessage.fromDomain(it) }
+                    database.messageDao().insertMessages(cached)
+                }
             }
         }
     }

@@ -11,24 +11,39 @@ import com.syncchat.app.auth.AuthRepository
 import com.syncchat.app.auth.FirebaseAuthRepository
 import com.syncchat.app.data.api.ApiRepository
 import com.syncchat.app.data.api.RetrofitApiRepository
+import com.syncchat.app.data.local.AppDatabase
+import com.syncchat.app.data.local.entities.CachedConversation
+import com.syncchat.app.data.local.entities.CachedUser
 import com.syncchat.app.data.model.Conversation
 import com.syncchat.app.data.model.UserProfile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 class HomeViewModel(
+    private val currentUserId: String,
     private val apiRepository: ApiRepository = RetrofitApiRepository(),
-    private val authRepository: AuthRepository = FirebaseAuthRepository()
+    private val authRepository: AuthRepository = FirebaseAuthRepository(),
+    private val database: AppDatabase
 ) : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
-    private val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
-    val conversations: StateFlow<List<Conversation>> = _conversations.asStateFlow()
+    // UI state flow powered by Room database flow (instant update, automatically updates when Room is updated)
+    val conversations: StateFlow<List<Conversation>> = database.conversationDao().getAllConversationsFlow(currentUserId)
+        .map { list -> list.map { it.toDomain() } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     private val _userProfiles = MutableStateFlow<Map<String, UserProfile>>(emptyMap())
     val userProfiles: StateFlow<Map<String, UserProfile>> = _userProfiles.asStateFlow()
@@ -44,13 +59,24 @@ class HomeViewModel(
     init {
         if (currentUserId.isNotEmpty()) {
             listenToConversations()
+
+            // Resolve profiles for conversations loaded from Room local cache
+            viewModelScope.launch {
+                conversations.collect { list ->
+                    list.forEach { conv ->
+                        val otherUid = conv.participantUids.firstOrNull { it != currentUserId }
+                        if (otherUid != null && !_userProfiles.value.containsKey(otherUid)) {
+                            fetchUserProfile(otherUid)
+                        }
+                    }
+                }
+            }
         }
     }
 
     private fun listenToConversations() {
         val query = firestore.collection("conversations")
             .whereArrayContains("participantUids", currentUserId)
-            .orderBy("updatedAt", Query.Direction.DESCENDING)
 
         listenerRegistration = query.addSnapshotListener { snapshot, error ->
             if (error != null) {
@@ -88,7 +114,15 @@ class HomeViewModel(
                         Log.e("HomeViewModel", "Error parsing conversation doc ${doc.id}", e)
                     }
                 }
-                _conversations.value = list
+                
+                // Sort by updatedAt descending in memory to avoid needing a composite index
+                list.sortByDescending { it.updatedAt }
+                
+                // Save conversations to Room in the background
+                viewModelScope.launch(Dispatchers.IO) {
+                    val cached = list.map { CachedConversation.fromDomain(it) }
+                    database.conversationDao().insertConversations(cached)
+                }
             }
         }
     }
@@ -96,27 +130,56 @@ class HomeViewModel(
     private fun fetchUserProfile(uid: String) {
         viewModelScope.launch {
             try {
-                val doc = firestore.collection("users").document(uid).get().await()
-                if (doc.exists()) {
-                    val profile = UserProfile(
-                        uid = doc.id,
-                        displayName = doc.getString("displayName") ?: "",
-                        email = doc.getString("email") ?: "",
-                        photoUrl = doc.getString("photoUrl")
-                    )
+                // 1. Try to load from Room local database first (instant display)
+                val localUser = withContext(Dispatchers.IO) {
+                    database.userDao().getUserById(uid)
+                }
+                if (localUser != null) {
+                    val profile = localUser.toDomain()
                     val updatedMap = _userProfiles.value.toMutableMap()
                     updatedMap[uid] = profile
                     _userProfiles.value = updatedMap
-                } else {
-                    // Try to fall back to API using token
-                    val token = authRepository.getIdToken() ?: return@launch
-                    val profile = apiRepository.getUserProfile(token, uid)
+                }
+
+                // 2. Try to fetch from Firestore in background to ensure it is fresh
+                var profile: UserProfile? = null
+                try {
+                    val doc = firestore.collection("users").document(uid).get().await()
+                    if (doc.exists()) {
+                        profile = UserProfile(
+                            uid = doc.id,
+                            displayName = doc.getString("displayName") ?: "",
+                            email = doc.getString("email") ?: "",
+                            photoUrl = doc.getString("photoUrl")
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w("HomeViewModel", "Direct Firestore fetch failed for $uid, falling back to API", e)
+                }
+
+                // 3. Try to fall back to backend API if Firestore was unsuccessful/unavailable
+                if (profile == null) {
+                    try {
+                        val token = authRepository.getIdToken()
+                        if (token != null) {
+                            profile = apiRepository.getUserProfile(token, uid)
+                        }
+                    } catch (apiEx: Exception) {
+                        Log.e("HomeViewModel", "Backend API fallback failed for $uid", apiEx)
+                    }
+                }
+
+                // 4. Save to Room cache and update UI if we successfully fetched the profile
+                if (profile != null) {
+                    withContext(Dispatchers.IO) {
+                        database.userDao().insertUser(CachedUser.fromDomain(profile))
+                    }
                     val updatedMap = _userProfiles.value.toMutableMap()
                     updatedMap[uid] = profile
                     _userProfiles.value = updatedMap
                 }
             } catch (e: Exception) {
-                Log.e("HomeViewModel", "Error fetching user profile for $uid", e)
+                Log.e("HomeViewModel", "Error in fetchUserProfile for $uid", e)
             }
         }
     }

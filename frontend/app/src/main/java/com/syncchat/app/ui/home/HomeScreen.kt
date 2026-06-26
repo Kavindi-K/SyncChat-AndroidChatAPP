@@ -28,8 +28,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
 import com.google.firebase.auth.FirebaseAuth
+import com.syncchat.app.data.local.AppDatabase
 import com.syncchat.app.data.model.Conversation
 import com.syncchat.app.data.model.UserProfile
 import java.text.SimpleDateFormat
@@ -40,8 +44,22 @@ import java.util.*
 fun HomeScreen(
     onConversationClick: (String, UserProfile) -> Unit,
     onSignOut: () -> Unit,
-    homeViewModel: HomeViewModel = viewModel()
+    database: AppDatabase = AppDatabase.getDatabase(LocalContext.current)
 ) {
+    val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val currentUserEmail = remember { FirebaseAuth.getInstance().currentUser?.email ?: "" }
+    val currentUserName = remember { FirebaseAuth.getInstance().currentUser?.displayName ?: "Me" }
+
+    val homeViewModel: HomeViewModel = viewModel(
+        key = currentUserId,
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return HomeViewModel(currentUserId = currentUserId, database = database) as T
+            }
+        }
+    )
+
     val conversations by homeViewModel.conversations.collectAsState()
     val profiles by homeViewModel.userProfiles.collectAsState()
     val searchResults by homeViewModel.searchResults.collectAsState()
@@ -49,10 +67,6 @@ fun HomeScreen(
 
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
-
-    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-    val currentUserEmail = FirebaseAuth.getInstance().currentUser?.email ?: ""
-    val currentUserName = FirebaseAuth.getInstance().currentUser?.displayName ?: "Me"
 
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -149,9 +163,7 @@ fun HomeScreen(
                             otherProfile = otherProfile,
                             currentUserId = currentUserId,
                             onClick = {
-                                if (otherProfile.displayName != "Loading...") {
-                                    onConversationClick(conversation.id, otherProfile)
-                                }
+                                onConversationClick(conversation.id, otherProfile)
                             }
                         )
                     }

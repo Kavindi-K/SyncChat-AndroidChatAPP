@@ -24,6 +24,8 @@ import com.syncchat.app.ui.home.HomeScreen
 import com.syncchat.app.ui.theme.SyncChatTheme
 import com.syncchat.app.ui.chat.ChatScreen
 import com.syncchat.app.data.model.UserProfile
+import com.syncchat.app.data.local.AppDatabase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 
@@ -46,6 +48,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Enable Firestore offline persistence
+        try {
+            val settings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+                .setPersistenceEnabled(true)
+                .build()
+            com.google.firebase.firestore.FirebaseFirestore.getInstance().firestoreSettings = settings
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to set Firestore settings: ${e.message}")
+        }
+
         enableEdgeToEdge()
         setContent {
             SyncChatTheme {
@@ -85,7 +98,13 @@ class MainActivity : ComponentActivity() {
                                     activeConversationId = id
                                     activeConversationUser = user
                                 },
-                                onSignOut = { authViewModel.signOut() }
+                                onSignOut = {
+                                    authViewModel.signOut()
+                                    val db = AppDatabase.getDatabase(this@MainActivity)
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        db.clearAllTables()
+                                    }
+                                }
                             )
                         }
                     }

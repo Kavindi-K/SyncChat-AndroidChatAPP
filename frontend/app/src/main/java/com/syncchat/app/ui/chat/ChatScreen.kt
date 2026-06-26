@@ -48,14 +48,16 @@ fun ChatScreen(
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+    val database = remember { com.syncchat.app.data.local.AppDatabase.getDatabase(context) }
 
-    // Inject ChatViewModel with conversationId
+    // Inject ChatViewModel with conversationId, currentUserId and Room Database
     val chatViewModel: ChatViewModel = viewModel(
+        key = "${conversationId}_${currentUserId}",
         factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return ChatViewModel(conversationId) as T
+                return ChatViewModel(conversationId = conversationId, currentUserId = currentUserId, database = database) as T
             }
         }
     )
