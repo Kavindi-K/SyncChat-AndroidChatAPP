@@ -194,12 +194,20 @@ class HomeViewModel(
             _isSearching.value = true
             try {
                 val term = query.trim()
+                val capitalizedTerm = term.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
                 
                 // Get all users matching term as prefix in displayName or email
                 val nameQueryTask = firestore.collection("users")
                     .orderBy("displayName")
                     .startAt(term)
                     .endAt(term + "\uf8ff")
+                    .limit(20)
+                    .get()
+
+                val nameCapQueryTask = firestore.collection("users")
+                    .orderBy("displayName")
+                    .startAt(capitalizedTerm)
+                    .endAt(capitalizedTerm + "\uf8ff")
                     .limit(20)
                     .get()
                 
@@ -211,26 +219,14 @@ class HomeViewModel(
                     .get()
                 
                 val nameSnapshot = nameQueryTask.await()
+                val nameCapSnapshot = nameCapQueryTask.await()
                 val emailSnapshot = emailQueryTask.await()
                 
                 val results = mutableListOf<UserProfile>()
                 val seenUids = mutableSetOf<String>()
                 
-                for (doc in nameSnapshot.documents) {
-                    val uid = doc.id
-                    if (uid != currentUserId && seenUids.add(uid)) {
-                        results.add(
-                            UserProfile(
-                                uid = uid,
-                                displayName = doc.getString("displayName") ?: "",
-                                email = doc.getString("email") ?: "",
-                                photoUrl = doc.getString("photoUrl")
-                            )
-                        )
-                    }
-                }
-                
-                for (doc in emailSnapshot.documents) {
+                val allDocs = nameSnapshot.documents + nameCapSnapshot.documents + emailSnapshot.documents
+                for (doc in allDocs) {
                     val uid = doc.id
                     if (uid != currentUserId && seenUids.add(uid)) {
                         results.add(

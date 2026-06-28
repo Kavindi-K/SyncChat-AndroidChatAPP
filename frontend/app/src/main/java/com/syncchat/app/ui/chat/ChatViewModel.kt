@@ -22,10 +22,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.syncchat.app.data.signalr.SignalRManager
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -56,11 +59,76 @@ class ChatViewModel(
     private val _uploadProgress = MutableStateFlow<String?>(null)
     val uploadProgress: StateFlow<String?> = _uploadProgress.asStateFlow()
 
+    private val _typingUsers = MutableStateFlow<Set<String>>(emptySet())
+    val typingUsers: StateFlow<Set<String>> = _typingUsers.asStateFlow()
+
+    private val signalRManager = SignalRManager.getInstance()
+
     private var listenerRegistration: ListenerRegistration? = null
-    private val okHttpClient = OkHttpClient()
+    private val okHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
 
     init {
         listenToMessages()
+        setupSignalRListeners()
+    }
+
+    private fun setupSignalRListeners() {
+        signalRManager.startConnection()
+        
+        val hubConnection = signalRManager.getHubConnection() ?: return
+        
+        hubConnection.on("UserTyping", { convId: String, userId: String ->
+            if (convId == conversationId && userId != currentUserId) {
+                _typingUsers.update { it + userId }
+            }
+        }, String::class.java, String::class.java)
+
+        hubConnection.on("UserStoppedTyping", { convId: String, userId: String ->
+            if (convId == conversationId) {
+                _typingUsers.update { it - userId }
+            }
+        }, String::class.java, String::class.java)
+        
+        // Listen for real-time NewMessage
+        hubConnection.on("NewMessage", { payloadStr: String ->
+            try {
+                // Since SignalR can't easily parse complex Android objects by default with Gson,
+                // we'll use a basic parsing or rely on the fact that payload might be JSON.
+                // Assuming payload is JSON string or object. If we pass plain strings:
+                val gson = com.google.gson.Gson()
+                val msg = gson.fromJson(payloadStr, com.syncchat.app.data.model.Message::class.java)
+                
+                if (msg.conversationId == conversationId) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        database.messageDao().insertMessages(listOf(CachedMessage.fromDomain(msg)))
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error parsing NewMessage", e)
+            }
+        }, String::class.java)
+
+        // Listen for real-time MessageRead
+        hubConnection.on("MessageRead", { convId: String, msgId: String, readerId: String ->
+            if (convId == conversationId) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val msgFlow = database.messageDao().getMessagesForConversationFlow(convId)
+                    val msgList = msgFlow.first()
+                    val msg = msgList.find { it.id == msgId }
+                    if (msg != null && !msg.readByString.contains(readerId)) {
+                        val currentReadBy = if (msg.readByString.isEmpty()) emptyList() else msg.readByString.split(",")
+                        if (!currentReadBy.contains(readerId)) {
+                            val newReadBy = currentReadBy + readerId
+                            database.messageDao().insertMessages(listOf(msg.copy(readByString = newReadBy.joinToString(","))))
+                        }
+                    }
+                }
+            }
+        }, String::class.java, String::class.java, String::class.java)
     }
 
     private fun listenToMessages() {
@@ -104,15 +172,59 @@ class ChatViewModel(
     fun sendMessage(text: String) {
         if (text.trim().isEmpty()) return
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _isSending.value = true
             try {
-                val token = authRepository.getIdToken() ?: return@launch
-                apiRepository.sendMessage(token, conversationId, text, null)
+                // Try sending via SignalR first for speed
+                val hub = signalRManager.getHubConnection()
+                if (hub != null && hub.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
+                    hub.invoke("SendMessage", conversationId, text).blockingAwait()
+                    stopTyping() // Stop typing after sending
+                } else {
+                    val token = authRepository.getIdToken() ?: return@launch
+                    apiRepository.sendMessage(token, conversationId, text, null)
+                }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send message", e)
+                // Fallback to API
+                try {
+                    val token = authRepository.getIdToken() ?: return@launch
+                    apiRepository.sendMessage(token, conversationId, text, null)
+                } catch (apiError: Exception) {
+                    Log.e("ChatViewModel", "API Fallback failed", apiError)
+                }
             } finally {
                 _isSending.value = false
+            }
+        }
+    }
+
+    fun startTyping() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                signalRManager.getHubConnection()?.invoke("StartTyping", conversationId)?.blockingAwait()
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "StartTyping failed", e)
+            }
+        }
+    }
+
+    fun stopTyping() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                signalRManager.getHubConnection()?.invoke("StopTyping", conversationId)?.blockingAwait()
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "StopTyping failed", e)
+            }
+        }
+    }
+
+    fun markAsRead(messageId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                signalRManager.getHubConnection()?.invoke("MarkRead", conversationId, messageId)?.blockingAwait()
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "MarkRead failed", e)
             }
         }
     }
@@ -150,8 +262,10 @@ class ChatViewModel(
                 }
 
                 if (!response.isSuccessful) {
+                    response.close()
                     throw Exception("GCS Upload failed with status code ${response.code}")
                 }
+                response.close()
 
                 // 5. Send message with the public mediaUrl
                 _uploadProgress.value = "Finalizing message..."

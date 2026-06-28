@@ -120,15 +120,34 @@ class AuthViewModel(
         viewModelScope.launch {
             try {
                 val user = FirebaseAuth.getInstance().currentUser ?: return@launch
-                apiRepository?.upsertProfile(
-                    token = token,
-                    displayName = user.displayName ?: "",
-                    email = user.email ?: "",
-                    photoUrl = user.photoUrl?.toString()
-                )
+                // 1. Sync to backend API
+                try {
+                    apiRepository?.upsertProfile(
+                        token = token,
+                        displayName = user.displayName ?: "",
+                        email = user.email ?: "",
+                        photoUrl = user.photoUrl?.toString()
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("AuthViewModel", "Backend Profile sync failed", e)
+                }
+
+                // 2. Direct Firestore fallback (handles cases where localhost API is unreachable from device)
+                try {
+                    val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                    val data = hashMapOf<String, Any>(
+                        "displayName" to (user.displayName ?: ""),
+                        "email" to (user.email ?: ""),
+                        "photoUrl" to (user.photoUrl?.toString() ?: ""),
+                        "fcmTokens" to emptyList<String>()
+                    )
+                    db.collection("users").document(user.uid)
+                        .set(data, com.google.firebase.firestore.SetOptions.merge())
+                } catch (e: Exception) {
+                    android.util.Log.e("AuthViewModel", "Firestore direct sync failed", e)
+                }
             } catch (e: Exception) {
-                // Profile sync failure must not block login or registration
-                android.util.Log.e("AuthViewModel", "Profile sync failed", e)
+                android.util.Log.e("AuthViewModel", "Profile sync failed completely", e)
             }
         }
     }

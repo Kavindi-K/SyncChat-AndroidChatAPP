@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using SyncChat.Application.UseCases.Messages;
+using Microsoft.AspNetCore.SignalR;
+using SyncChat.API.Hubs;
+using SyncChat.Application.Interfaces;
 
 namespace SyncChat.API.Controllers;
 
@@ -17,15 +20,21 @@ public class MessagesController : ControllerBase
     private readonly SendMessageUseCase _sendMessageUseCase;
     private readonly GetMessagesUseCase _getMessagesUseCase;
     private readonly ILogger<MessagesController> _logger;
+    private readonly IHubContext<ChatHub> _hubContext;
+    private readonly IConversationRepository _conversationRepository;
 
     public MessagesController(
         SendMessageUseCase sendMessageUseCase,
         GetMessagesUseCase getMessagesUseCase,
-        ILogger<MessagesController> logger)
+        ILogger<MessagesController> logger,
+        IHubContext<ChatHub> hubContext,
+        IConversationRepository conversationRepository)
     {
         _sendMessageUseCase = sendMessageUseCase;
         _getMessagesUseCase = getMessagesUseCase;
         _logger = logger;
+        _hubContext = hubContext;
+        _conversationRepository = conversationRepository;
     }
 
     [HttpPost]
@@ -39,6 +48,19 @@ public class MessagesController : ControllerBase
         {
             var input = new SendMessageInput(conversationId, currentUserId, request.Text ?? string.Empty, request.MediaUrl);
             var message = await _sendMessageUseCase.ExecuteAsync(input);
+
+            // Broadcast via SignalR to recipient for real-time delivery (bypassing Firestore latency)
+            var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
+            if (conversation != null)
+            {
+                var recipientUid = conversation.ParticipantUids.FirstOrDefault(uid => uid != currentUserId);
+                if (!string.IsNullOrEmpty(recipientUid))
+                {
+                    var payloadStr = System.Text.Json.JsonSerializer.Serialize(message);
+                    await _hubContext.Clients.Group(recipientUid).SendAsync("NewMessage", payloadStr);
+                }
+            }
+
             return CreatedAtAction(nameof(GetMessages), new { conversationId = conversationId }, message);
         }
         catch (FluentValidation.ValidationException valEx)

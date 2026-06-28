@@ -3,6 +3,7 @@ package com.syncchat.app.ui.chat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -65,6 +66,7 @@ fun ChatScreen(
     val messages by chatViewModel.messages.collectAsState()
     val isSending by chatViewModel.isSending.collectAsState()
     val uploadProgress by chatViewModel.uploadProgress.collectAsState()
+    val typingUsers by chatViewModel.typingUsers.collectAsState()
 
     var textInput by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -81,10 +83,28 @@ fun ChatScreen(
     val listState = rememberLazyListState()
 
     // Auto-scroll to bottom when new messages arrive
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(messages.size, typingUsers.size) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+            listState.animateScrollToItem(messages.size + (if (typingUsers.isNotEmpty()) 1 else 0))
         }
+    }
+
+    // Typing debounce and idle timeout
+    LaunchedEffect(textInput) {
+        if (textInput.isNotEmpty()) {
+            kotlinx.coroutines.delay(300) // Debounce before starting
+            chatViewModel.startTyping()
+            kotlinx.coroutines.delay(2000) // Idle timeout before stopping
+            chatViewModel.stopTyping()
+        } else {
+            chatViewModel.stopTyping()
+        }
+    }
+
+    // Read receipts
+    LaunchedEffect(messages) {
+        messages.filter { it.senderId != currentUserId && !it.readBy.contains(currentUserId) }
+            .forEach { chatViewModel.markAsRead(it.id) }
     }
 
     Scaffold(
@@ -158,6 +178,32 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            val connectionStatus by com.syncchat.app.data.signalr.SignalRManager.getInstance().connectionStatus.collectAsState()
+            
+            // Connection Banner
+            AnimatedVisibility(
+                visible = connectionStatus == com.syncchat.app.data.signalr.ConnectionStatus.Failed || 
+                          connectionStatus == com.syncchat.app.data.signalr.ConnectionStatus.Reconnecting,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (connectionStatus == com.syncchat.app.data.signalr.ConnectionStatus.Failed) Color.Red else Color(0xFFFFA500))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (connectionStatus == com.syncchat.app.data.signalr.ConnectionStatus.Failed) 
+                                "Connection lost permanently. Restart app." 
+                               else "Reconnecting...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White
+                    )
+                }
+            }
+
             // Upload Progress Banner
             AnimatedVisibility(
                 visible = uploadProgress != null,
@@ -217,6 +263,12 @@ fun ChatScreen(
                         items(messages) { message ->
                             val isMe = message.senderId == currentUserId
                             MessageBubble(message = message, isMe = isMe)
+                        }
+                        
+                        if (typingUsers.isNotEmpty()) {
+                            item {
+                                TypingIndicatorBubble(name = otherUser.displayName)
+                            }
                         }
                     }
                 }
@@ -360,14 +412,70 @@ fun MessageBubble(message: Message, isMe: Boolean) {
 
         Spacer(modifier = Modifier.height(2.dp))
 
-        // Time
+        // Time and Read Receipts
         val format = SimpleDateFormat("h:mm a", Locale.getDefault())
         val timeStr = format.format(message.timestamp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = timeStr,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            
+            if (isMe) {
+                Spacer(modifier = Modifier.width(4.dp))
+                val isRead = message.readBy.any { it != message.senderId }
+                val checkColor = if (isRead) Color(0xFF00FF88) else Color.Gray
+                Text(
+                    text = if (isRead) "✓✓" else "✓",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = checkColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TypingIndicatorBubble(name: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
         Text(
-            text = timeStr,
+            text = "$name is typing...",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
         )
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF2E2E3E))
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val transition = rememberInfiniteTransition(label = "typing")
+                for (i in 0 until 3) {
+                    val offsetY by transition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = -8f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(300, delayMillis = i * 100),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "dot"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(y = offsetY.dp)
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                }
+            }
+        }
     }
 }

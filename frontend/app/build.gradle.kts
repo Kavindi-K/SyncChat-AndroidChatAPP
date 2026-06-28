@@ -95,6 +95,9 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     "kapt"(libs.sqlite.jdbc)
     "kapt"(libs.androidx.room.compiler)
+    
+    // SignalR
+    implementation(libs.signalr)
 
 
 

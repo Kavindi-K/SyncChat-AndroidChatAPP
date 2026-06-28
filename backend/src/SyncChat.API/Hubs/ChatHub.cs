@@ -62,20 +62,12 @@ public class ChatHub : Hub
         var input = new SendMessageInput(conversationId, senderId, text, null);
         var message = await _sendMessageUseCase.ExecuteAsync(input);
 
-        // Find recipient to notify
         var recipientUid = conversation.ParticipantUids.FirstOrDefault(uid => uid != senderId);
         if (!string.IsNullOrEmpty(recipientUid))
         {
-            await Clients.Group(recipientUid).SendAsync("NewMessage", new
-            {
-                id = message.Id,
-                conversationId = message.ConversationId,
-                senderId = message.SenderId,
-                text = message.Text,
-                mediaUrl = message.MediaUrl,
-                timestamp = message.Timestamp,
-                readBy = message.ReadBy
-            });
+            // Serialize the message to a JSON string because the Android client expects a single String payload
+            var payloadStr = System.Text.Json.JsonSerializer.Serialize(message);
+            await Clients.Group(recipientUid).SendAsync("NewMessage", payloadStr);
         }
     }
 
@@ -104,12 +96,7 @@ public class ChatHub : Hub
         var otherUserId = conversation.ParticipantUids.FirstOrDefault(uid => uid != currentUserId);
         if (!string.IsNullOrEmpty(otherUserId))
         {
-            await Clients.Group(otherUserId).SendAsync("MessageRead", new
-            {
-                conversationId,
-                messageId,
-                readBy = currentUserId
-            });
+            await Clients.Group(otherUserId).SendAsync("MessageRead", conversationId, messageId, currentUserId);
         }
     }
 
@@ -129,11 +116,7 @@ public class ChatHub : Hub
         var otherUserId = conversation.ParticipantUids.FirstOrDefault(uid => uid != currentUserId);
         if (!string.IsNullOrEmpty(otherUserId))
         {
-            await Clients.Group(otherUserId).SendAsync("UserTyping", new
-            {
-                conversationId,
-                userId = currentUserId
-            });
+            await Clients.Group(otherUserId).SendAsync("UserTyping", conversationId, currentUserId);
         }
     }
 
@@ -153,11 +136,7 @@ public class ChatHub : Hub
         var otherUserId = conversation.ParticipantUids.FirstOrDefault(uid => uid != currentUserId);
         if (!string.IsNullOrEmpty(otherUserId))
         {
-            await Clients.Group(otherUserId).SendAsync("UserStoppedTyping", new
-            {
-                conversationId,
-                userId = currentUserId
-            });
+            await Clients.Group(otherUserId).SendAsync("UserStoppedTyping", conversationId, currentUserId);
         }
     }
 

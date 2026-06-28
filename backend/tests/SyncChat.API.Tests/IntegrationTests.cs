@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Google.Cloud.Firestore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using SyncChat.Application.Interfaces;
@@ -113,7 +114,7 @@ public class IntegrationTests : IAsyncLifetime
         await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, Array.Empty<string>());
 
         // Seed conversation
-        var conversationId = "test-conv-1";
+        var conversationId = $"test-conv-1-{Guid.NewGuid()}";
         var conv = new Conversation
         {
             Id = conversationId,
@@ -158,7 +159,7 @@ public class IntegrationTests : IAsyncLifetime
         await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, Array.Empty<string>());
         await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, Array.Empty<string>());
 
-        var conversationId = "test-conv-2";
+        var conversationId = $"test-conv-2-{Guid.NewGuid()}";
         var conv = new Conversation
         {
             Id = conversationId,
@@ -237,7 +238,7 @@ public class IntegrationTests : IAsyncLifetime
         await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, Array.Empty<string>());
         await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, Array.Empty<string>());
 
-        var conversationId = "test-conv-rate";
+        var conversationId = $"test-conv-rate-{Guid.NewGuid()}";
         var conv = new Conversation
         {
             Id = conversationId,
@@ -263,5 +264,53 @@ public class IntegrationTests : IAsyncLifetime
 
         // Assert
         Assert.Equal(HttpStatusCode.TooManyRequests, blockedRes.StatusCode);
+    }
+
+    [Fact]
+    public async Task SignalR_ConnectWithValidToken_HandshakeSuccessful()
+    {
+        // Arrange
+        var uid = "user-sig1";
+        _mockAuthService.Setup(x => x.VerifyIdTokenAsync("valid-signalr-token"))
+            .ReturnsAsync(new FirebaseTokenResult(uid, "sig1@test.com", "Sig1"));
+
+        var server = _factory.Server;
+        var connection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
+            .WithUrl("http://localhost/hubs/chat", options =>
+            {
+                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
+                options.AccessTokenProvider = () => Task.FromResult((string?)"valid-signalr-token");
+            })
+            .Build();
+
+        // Act & Assert
+        var exception = await Record.ExceptionAsync(() => connection.StartAsync());
+        Assert.Null(exception); // Handshake successful!
+        Assert.Equal(Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected, connection.State);
+
+        await connection.StopAsync();
+    }
+
+    [Fact]
+    public async Task SignalR_ConnectWithInvalidToken_HandshakeFailsWith401()
+    {
+        // Arrange
+        _mockAuthService.Setup(x => x.VerifyIdTokenAsync("invalid-token"))
+            .ThrowsAsync(new System.Exception("Invalid token"));
+
+        var server = _factory.Server;
+        var connection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
+            .WithUrl("http://localhost/hubs/chat", options =>
+            {
+                options.HttpMessageHandlerFactory = _ => server.CreateHandler();
+                options.AccessTokenProvider = () => Task.FromResult((string?)"invalid-token");
+            })
+            .Build();
+
+        // Act & Assert
+        var exception = await Record.ExceptionAsync(() => connection.StartAsync());
+        
+        Assert.NotNull(exception);
+        Assert.Contains("401", exception.Message); // Verifies 401 Unauthorized
     }
 }
