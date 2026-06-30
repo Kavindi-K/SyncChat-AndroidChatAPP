@@ -71,6 +71,13 @@ class ChatViewModel(
     private val _typingUsers = MutableStateFlow<Set<String>>(emptySet())
     val typingUsers: StateFlow<Set<String>> = _typingUsers.asStateFlow()
 
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    fun clearError() {
+        _errorMessage.value = null
+    }
+
     private val signalRManager = SignalRManager.getInstance()
 
     private var listenerRegistration: ListenerRegistration? = null
@@ -221,6 +228,7 @@ class ChatViewModel(
                 stopTyping()
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send, message queued as PENDING", e)
+                _errorMessage.value = "Failed to send message. It will be retried automatically."
                 // Message stays PENDING — WorkManager will retry when connectivity is restored
                 scheduleMessageSync()
             } finally {
@@ -303,6 +311,7 @@ class ChatViewModel(
 
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Image send failed", e)
+                _errorMessage.value = "Failed to upload image. Please try again."
             } finally {
                 _isSending.value = false
                 _uploadProgress.value = null

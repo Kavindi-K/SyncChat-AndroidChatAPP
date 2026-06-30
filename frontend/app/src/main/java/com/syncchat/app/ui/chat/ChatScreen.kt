@@ -67,6 +67,7 @@ fun ChatScreen(
     val isSending by chatViewModel.isSending.collectAsState()
     val uploadProgress by chatViewModel.uploadProgress.collectAsState()
     val typingUsers by chatViewModel.typingUsers.collectAsState()
+    val errorMessage by chatViewModel.errorMessage.collectAsState()
 
     var textInput by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -107,7 +108,16 @@ fun ChatScreen(
             .forEach { chatViewModel.markAsRead(it.id) }
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let {
+            snackbarHostState.showSnackbar(it, duration = SnackbarDuration.Short)
+            chatViewModel.clearError()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
