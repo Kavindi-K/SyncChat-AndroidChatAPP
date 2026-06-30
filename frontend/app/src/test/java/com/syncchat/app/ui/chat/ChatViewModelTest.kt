@@ -353,7 +353,7 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `MessageSyncWorker syncs PENDING messages to Retrofit and updates status to SENT`() = runTest {
+    fun `MessageSyncWorker syncs PENDING messages to Retrofit and deletes them on success`() = runTest {
         // Arrange
         val context = mockk<android.content.Context>(relaxed = true)
         val params = mockk<androidx.work.WorkerParameters>(relaxed = true)
@@ -363,7 +363,7 @@ class ChatViewModelTest {
         
         mockkConstructor(com.syncchat.app.auth.FirebaseAuthRepository::class)
         coEvery { anyConstructed<com.syncchat.app.auth.FirebaseAuthRepository>().getIdToken() } returns "fake-token"
-
+ 
         mockkConstructor(com.syncchat.app.data.api.RetrofitApiRepository::class)
         val mockPending = CachedMessage(
             id = "pending-1",
@@ -378,19 +378,19 @@ class ChatViewModelTest {
         coEvery { mockMessageDao.getPendingMessages() } returns listOf(mockPending)
         
         coEvery { anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage(any(), any(), any(), any()) } returns mockk(relaxed = true)
-
+ 
         val worker = com.syncchat.app.data.workers.MessageSyncWorker(context, params)
-
+ 
         // Act
         val result = worker.doWork()
-
+ 
         // Assert
         assertEquals(androidx.work.ListenableWorker.Result.success(), result)
         io.mockk.coVerify(exactly = 1) { 
             anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage("fake-token", "conv-1", "Pending message", null)
         }
         io.mockk.coVerify(exactly = 1) { 
-            mockMessageDao.updateMessageStatus("pending-1", "SENT")
+            mockMessageDao.deleteMessageById("pending-1")
         }
     }
 
@@ -431,9 +431,9 @@ class ChatViewModelTest {
         io.mockk.coVerify(exactly = 1) { 
             anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage("fake-token", "conv-1", "Pending message", null)
         }
-        // Verify we NEVER update the message status to SENT, leaving it as PENDING
+        // Verify we NEVER delete the pending message, leaving it as PENDING
         io.mockk.coVerify(exactly = 0) { 
-            mockMessageDao.updateMessageStatus("pending-1", "SENT")
+            mockMessageDao.deleteMessageById("pending-1")
         }
     }
 }

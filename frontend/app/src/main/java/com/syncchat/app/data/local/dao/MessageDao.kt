@@ -30,4 +30,7 @@ interface MessageDao {
 
     @Query("UPDATE cached_messages SET status = :status WHERE id = :messageId")
     suspend fun updateMessageStatus(messageId: String, status: String)
+
+    @Query("DELETE FROM cached_messages WHERE id = :messageId")
+    suspend fun deleteMessageById(messageId: String)
 }

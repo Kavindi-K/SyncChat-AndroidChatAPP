@@ -51,7 +51,7 @@ class MessageSyncWorker(
         for (msg in pendingMessages) {
             try {
                 apiRepo.sendMessage(token, msg.conversationId, msg.text, msg.mediaUrl)
-                db.messageDao().updateMessageStatus(msg.id, MessageStatus.SENT.name)
+                db.messageDao().deleteMessageById(msg.id)
                 Log.d(TAG, "Successfully synced message ${msg.id}")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to sync message ${msg.id}", e)
