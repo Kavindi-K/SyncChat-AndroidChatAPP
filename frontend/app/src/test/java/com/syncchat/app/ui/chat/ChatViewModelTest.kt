@@ -8,12 +8,7 @@ import com.syncchat.app.data.api.ApiRepository
 import com.syncchat.app.data.local.AppDatabase
 import com.syncchat.app.data.local.dao.MessageDao
 import com.syncchat.app.data.local.entities.CachedMessage
-import io.mockk.coEvery
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.mockkObject
-import io.mockk.mockkStatic
-import io.mockk.unmockkAll
+import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -319,5 +314,126 @@ class ChatViewModelTest {
         
         advanceUntilIdle()
         io.mockk.verify(exactly = 1) { mockHub.invoke("StartTyping", "conv-1") }
+    }
+
+    @Test
+    fun `sendMessage while offline inserts message to Room with PENDING status and no API call is made`() = runTest {
+        // Arrange: Make SignalR disconnected
+        val mockSignalRManager = mockk<com.syncchat.app.data.signalr.SignalRManager>(relaxed = true)
+        val mockHub = mockk<com.microsoft.signalr.HubConnection>(relaxed = true)
+        mockkObject(com.syncchat.app.data.signalr.SignalRManager)
+        every { com.syncchat.app.data.signalr.SignalRManager.getInstance() } returns mockSignalRManager
+        every { mockSignalRManager.getHubConnection() } returns mockHub
+        every { mockHub.connectionState } returns com.microsoft.signalr.HubConnectionState.DISCONNECTED
+
+        // Make Auth or API throw exception (network down)
+        coEvery { mockAuthRepository.getIdToken() } throws Exception("Network unavailable")
+
+        val viewModel = ChatViewModel(
+            conversationId = "conv-1",
+            currentUserId = "test-uid-123",
+            apiRepository = mockApiRepo,
+            authRepository = mockAuthRepository,
+            database = mockDb
+        )
+
+        // Act
+        viewModel.sendMessage("Offline message")
+        advanceUntilIdle()
+
+        // Assert
+        io.mockk.coVerify(exactly = 1) {
+            mockMessageDao.insertMessage(match { 
+                it.text == "Offline message" && it.status == "PENDING"
+            })
+        }
+        io.mockk.coVerify(exactly = 0) {
+            mockApiRepo.sendMessage(any(), any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `MessageSyncWorker syncs PENDING messages to Retrofit and updates status to SENT`() = runTest {
+        // Arrange
+        val context = mockk<android.content.Context>(relaxed = true)
+        val params = mockk<androidx.work.WorkerParameters>(relaxed = true)
+        
+        mockkObject(AppDatabase.Companion)
+        every { AppDatabase.getDatabase(any()) } returns mockDb
+        
+        mockkConstructor(com.syncchat.app.auth.FirebaseAuthRepository::class)
+        coEvery { anyConstructed<com.syncchat.app.auth.FirebaseAuthRepository>().getIdToken() } returns "fake-token"
+
+        mockkConstructor(com.syncchat.app.data.api.RetrofitApiRepository::class)
+        val mockPending = CachedMessage(
+            id = "pending-1",
+            conversationId = "conv-1",
+            senderId = "test-uid-123",
+            text = "Pending message",
+            mediaUrl = null,
+            timestampTime = System.currentTimeMillis(),
+            readByString = "",
+            status = "PENDING"
+        )
+        coEvery { mockMessageDao.getPendingMessages() } returns listOf(mockPending)
+        
+        coEvery { anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage(any(), any(), any(), any()) } returns mockk(relaxed = true)
+
+        val worker = com.syncchat.app.data.workers.MessageSyncWorker(context, params)
+
+        // Act
+        val result = worker.doWork()
+
+        // Assert
+        assertEquals(androidx.work.ListenableWorker.Result.success(), result)
+        io.mockk.coVerify(exactly = 1) { 
+            anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage("fake-token", "conv-1", "Pending message", null)
+        }
+        io.mockk.coVerify(exactly = 1) { 
+            mockMessageDao.updateMessageStatus("pending-1", "SENT")
+        }
+    }
+
+    @Test
+    fun `MessageSyncWorker sync fails when Retrofit throws exception and message status remains PENDING`() = runTest {
+        // Arrange
+        val context = mockk<android.content.Context>(relaxed = true)
+        val params = mockk<androidx.work.WorkerParameters>(relaxed = true)
+        
+        mockkObject(AppDatabase.Companion)
+        every { AppDatabase.getDatabase(any()) } returns mockDb
+        
+        mockkConstructor(com.syncchat.app.auth.FirebaseAuthRepository::class)
+        coEvery { anyConstructed<com.syncchat.app.auth.FirebaseAuthRepository>().getIdToken() } returns "fake-token"
+
+        mockkConstructor(com.syncchat.app.data.api.RetrofitApiRepository::class)
+        val mockPending = CachedMessage(
+            id = "pending-1",
+            conversationId = "conv-1",
+            senderId = "test-uid-123",
+            text = "Pending message",
+            mediaUrl = null,
+            timestampTime = System.currentTimeMillis(),
+            readByString = "",
+            status = "PENDING"
+        )
+        coEvery { mockMessageDao.getPendingMessages() } returns listOf(mockPending)
+        
+        coEvery { anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage(any(), any(), any(), any()) } throws Exception("API Server Error")
+
+        val worker = com.syncchat.app.data.workers.MessageSyncWorker(context, params)
+
+        // Act
+        val result = worker.doWork()
+
+        // Assert
+        assertEquals(androidx.work.ListenableWorker.Result.retry(), result)
+        io.mockk.coVerify(exactly = 1) { 
+            anyConstructed<com.syncchat.app.data.api.RetrofitApiRepository>().sendMessage("fake-token", "conv-1", "Pending message", null)
+        }
+        // Verify we NEVER update the message status to SENT, leaving it as PENDING
+        io.mockk.coVerify(exactly = 0) { 
+            mockMessageDao.updateMessageStatus("pending-1", "SENT")
+        }
     }
 }
