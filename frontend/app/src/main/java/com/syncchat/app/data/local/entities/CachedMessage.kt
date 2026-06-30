@@ -3,6 +3,7 @@ package com.syncchat.app.data.local.entities
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.syncchat.app.data.model.Message
+import com.syncchat.app.data.model.MessageStatus
 import java.util.Date
 
 @Entity(tableName = "cached_messages")
@@ -13,7 +14,8 @@ data class CachedMessage(
     val text: String,
     val mediaUrl: String?,
     val timestampTime: Long,
-    val readByString: String // Comma-separated Uids
+    val readByString: String, // Comma-separated Uids
+    val status: String = MessageStatus.SENT.name // Default SENT for incoming/server messages
 ) {
     fun toDomain(): Message {
         val readByList = if (readByString.isEmpty()) {
@@ -29,7 +31,8 @@ data class CachedMessage(
             text = text,
             mediaUrl = mediaUrl,
             timestamp = Date(timestampTime),
-            readBy = readByList
+            readBy = readByList,
+            status = status
         )
     }
 
@@ -42,7 +45,8 @@ data class CachedMessage(
                 text = msg.text,
                 mediaUrl = msg.mediaUrl,
                 timestampTime = msg.timestamp.time,
-                readByString = msg.readBy.joinToString(",")
+                readByString = msg.readBy.joinToString(","),
+                status = msg.status
             )
         }
     }

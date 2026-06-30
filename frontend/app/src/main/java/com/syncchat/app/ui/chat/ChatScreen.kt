@@ -58,7 +58,7 @@ fun ChatScreen(
         factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return ChatViewModel(conversationId = conversationId, currentUserId = currentUserId, database = database) as T
+                return ChatViewModel(conversationId = conversationId, currentUserId = currentUserId, database = database, context = context.applicationContext) as T
             }
         }
     )
