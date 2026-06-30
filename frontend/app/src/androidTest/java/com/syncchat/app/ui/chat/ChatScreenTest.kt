@@ -26,6 +26,7 @@ class ChatScreenTest {
     @Before
     fun setUp() {
         mockkStatic(FirebaseAuth::class)
+        mockkObject(AppDatabase.Companion)
     }
 
     @After
@@ -40,6 +41,7 @@ class ChatScreenTest {
         val mockDao = mockk<MessageDao>(relaxed = true)
         every { mockDb.messageDao() } returns mockDao
         every { mockDao.getMessagesForConversationFlow("conv-1") } returns messagesFlow
+        every { AppDatabase.getDatabase(any()) } returns mockDb
 
         // Mock Firebase Auth
         val mockAuth = mockk<FirebaseAuth>(relaxed = true)
@@ -79,6 +81,7 @@ class ChatScreenTest {
         val mockDao = mockk<MessageDao>(relaxed = true)
         every { mockDb.messageDao() } returns mockDao
         every { mockDao.getMessagesForConversationFlow("conv-1") } returns messagesFlow
+        every { AppDatabase.getDatabase(any()) } returns mockDb
 
         val mockAuth = mockk<FirebaseAuth>(relaxed = true)
         val mockUser = mockk<FirebaseUser>(relaxed = true)
@@ -121,6 +124,7 @@ class ChatScreenTest {
         val mockDao = mockk<MessageDao>(relaxed = true)
         every { mockDb.messageDao() } returns mockDao
         every { mockDao.getMessagesForConversationFlow("conv-1") } returns messagesFlow
+        every { AppDatabase.getDatabase(any()) } returns mockDb
 
         val mockAuth = mockk<FirebaseAuth>(relaxed = true)
         val mockUser = mockk<FirebaseUser>(relaxed = true)
@@ -168,6 +172,7 @@ class ChatScreenTest {
         val mockDao = mockk<MessageDao>(relaxed = true)
         every { mockDb.messageDao() } returns mockDao
         every { mockDao.getMessagesForConversationFlow("conv-1") } returns messagesFlow
+        every { AppDatabase.getDatabase(any()) } returns mockDb
 
         val mockAuth = mockk<FirebaseAuth>(relaxed = true)
         val mockUser = mockk<FirebaseUser>(relaxed = true)

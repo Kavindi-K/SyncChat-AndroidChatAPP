@@ -179,6 +179,19 @@ class ChatViewModel(
                 
                 // Save messages to Room in background
                 viewModelScope.launch(Dispatchers.IO) {
+                    val pendingList = database.messageDao().getPendingMessages()
+                    for (serverMsg in list) {
+                        if (serverMsg.senderId == currentUserId) {
+                            val matchedPending = pendingList.find { pending ->
+                                pending.text == serverMsg.text &&
+                                pending.mediaUrl == serverMsg.mediaUrl &&
+                                Math.abs(pending.timestampTime - serverMsg.timestamp.time) < 30000
+                            }
+                            if (matchedPending != null) {
+                                database.messageDao().deleteMessageById(matchedPending.id)
+                            }
+                        }
+                    }
                     val cached = list.map { CachedMessage.fromDomain(it) }
                     database.messageDao().insertMessages(cached)
                 }
@@ -223,8 +236,8 @@ class ChatViewModel(
                     apiRepository.sendMessage(token, conversationId, text.trim(), null)
                 }
 
-                // 3. Mark as SENT on success
-                database.messageDao().updateMessageStatus(localId, MessageStatus.SENT.name)
+                // 3. Delete local pending message on success (the server message will be synced down shortly)
+                database.messageDao().deleteMessageById(localId)
                 stopTyping()
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send, message queued as PENDING", e)
