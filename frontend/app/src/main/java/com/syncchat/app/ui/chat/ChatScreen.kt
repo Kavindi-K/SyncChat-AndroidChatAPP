@@ -425,13 +425,19 @@ fun MessageBubble(message: Message, isMe: Boolean) {
             
             if (isMe) {
                 Spacer(modifier = Modifier.width(4.dp))
-                val isRead = message.readBy.any { it != message.senderId }
-                val checkColor = if (isRead) Color(0xFF00FF88) else Color.Gray
-                Text(
-                    text = if (isRead) "✓✓" else "✓",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = checkColor
-                )
+                when (message.status) {
+                    "PENDING" -> Text("⌛", fontSize = 12.sp)
+                    "FAILED" -> Text("⚠️", fontSize = 12.sp, color = Color.Red)
+                    else -> {
+                        val isRead = message.readBy.any { it != message.senderId }
+                        val checkColor = if (isRead) Color(0xFF00FF88) else Color.Gray
+                        Text(
+                            text = if (isRead) "✓✓" else "✓",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = checkColor
+                        )
+                    }
+                }
             }
         }
     }
