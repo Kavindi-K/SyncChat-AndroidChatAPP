@@ -99,6 +99,9 @@ dependencies {
     // SignalR
     implementation(libs.signalr)
 
+    // WorkManager for offline message queue sync
+    implementation(libs.androidx.work.runtime.ktx)
+
 
 
     // Unit testing

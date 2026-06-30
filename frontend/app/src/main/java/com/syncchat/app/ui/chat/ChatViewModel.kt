@@ -6,6 +6,11 @@ import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -17,6 +22,8 @@ import com.syncchat.app.data.api.RetrofitApiRepository
 import com.syncchat.app.data.local.AppDatabase
 import com.syncchat.app.data.local.entities.CachedMessage
 import com.syncchat.app.data.model.Message
+import com.syncchat.app.data.model.MessageStatus
+import com.syncchat.app.data.workers.MessageSyncWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,13 +40,15 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.UUID
 
 class ChatViewModel(
     private val conversationId: String,
     private val currentUserId: String,
     private val apiRepository: ApiRepository = RetrofitApiRepository(),
     private val authRepository: AuthRepository = FirebaseAuthRepository(),
-    private val database: AppDatabase
+    private val database: AppDatabase,
+    private val context: Context? = null // Optional context for WorkManager scheduling
 ) : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
@@ -74,6 +83,7 @@ class ChatViewModel(
     init {
         listenToMessages()
         setupSignalRListeners()
+        scheduleMessageSync()
     }
 
     private fun setupSignalRListeners() {
@@ -169,30 +179,50 @@ class ChatViewModel(
         }
     }
 
+    /**
+     * Offline-first message sending:
+     * 1. Immediately insert into Room as PENDING (appears in UI instantly with ⌛)
+     * 2. Try to deliver via SignalR or REST API
+     * 3. On success → mark as SENT (UI updates to ✓)
+     * 4. On failure → stays PENDING (WorkManager will retry when connectivity is restored)
+     */
     fun sendMessage(text: String) {
         if (text.trim().isEmpty()) return
 
         viewModelScope.launch(Dispatchers.IO) {
             _isSending.value = true
+
+            // 1. Generate a local ID and insert into Room immediately as PENDING
+            val localId = UUID.randomUUID().toString()
+            val pendingMessage = CachedMessage(
+                id = localId,
+                conversationId = conversationId,
+                senderId = currentUserId,
+                text = text.trim(),
+                mediaUrl = null,
+                timestampTime = System.currentTimeMillis(),
+                readByString = "",
+                status = MessageStatus.PENDING.name
+            )
+            database.messageDao().insertMessage(pendingMessage)
+
+            // 2. Try to deliver via SignalR or REST API
             try {
-                // Try sending via SignalR first for speed
                 val hub = signalRManager.getHubConnection()
                 if (hub != null && hub.connectionState == com.microsoft.signalr.HubConnectionState.CONNECTED) {
-                    hub.invoke("SendMessage", conversationId, text).blockingAwait()
-                    stopTyping() // Stop typing after sending
+                    hub.invoke("SendMessage", conversationId, text.trim()).blockingAwait()
                 } else {
-                    val token = authRepository.getIdToken() ?: return@launch
-                    apiRepository.sendMessage(token, conversationId, text, null)
+                    val token = authRepository.getIdToken() ?: throw Exception("No auth token")
+                    apiRepository.sendMessage(token, conversationId, text.trim(), null)
                 }
+
+                // 3. Mark as SENT on success
+                database.messageDao().updateMessageStatus(localId, MessageStatus.SENT.name)
+                stopTyping()
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "Failed to send message", e)
-                // Fallback to API
-                try {
-                    val token = authRepository.getIdToken() ?: return@launch
-                    apiRepository.sendMessage(token, conversationId, text, null)
-                } catch (apiError: Exception) {
-                    Log.e("ChatViewModel", "API Fallback failed", apiError)
-                }
+                Log.e("ChatViewModel", "Failed to send, message queued as PENDING", e)
+                // Message stays PENDING — WorkManager will retry when connectivity is restored
+                scheduleMessageSync()
             } finally {
                 _isSending.value = false
             }
@@ -278,6 +308,27 @@ class ChatViewModel(
                 _uploadProgress.value = null
             }
         }
+    }
+
+    /**
+     * Schedule a WorkManager job to sync any PENDING messages
+     * when network connectivity is available.
+     */
+    private fun scheduleMessageSync() {
+        val ctx = context ?: return
+        val syncRequest = OneTimeWorkRequestBuilder<MessageSyncWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(ctx).enqueueUniqueWork(
+            MessageSyncWorker.UNIQUE_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            syncRequest
+        )
     }
 
     private fun getFileDetails(context: Context, uri: Uri): Pair<String, String?> {

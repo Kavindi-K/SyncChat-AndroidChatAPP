@@ -23,4 +23,11 @@ interface MessageDao {
 
     @Query("DELETE FROM cached_messages WHERE conversationId = :conversationId")
     suspend fun deleteMessagesForConversation(conversationId: String)
+
+    // Offline queue queries
+    @Query("SELECT * FROM cached_messages WHERE status = 'PENDING' ORDER BY timestampTime ASC")
+    suspend fun getPendingMessages(): List<CachedMessage>
+
+    @Query("UPDATE cached_messages SET status = :status WHERE id = :messageId")
+    suspend fun updateMessageStatus(messageId: String, status: String)
 }

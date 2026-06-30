@@ -9,5 +9,12 @@ data class Message(
     val text: String = "",
     val mediaUrl: String? = null,
     val timestamp: Date = Date(),
-    val readBy: List<String> = emptyList()
+    val readBy: List<String> = emptyList(),
+    val status: String = MessageStatus.SENT.name
 )
+
+enum class MessageStatus {
+    PENDING,   // Stored locally, not yet sent to server
+    SENT,      // Successfully delivered to backend
+    FAILED     // Delivery attempted but failed (will retry)
+}
