@@ -24,6 +24,7 @@ import com.syncchat.app.data.local.entities.CachedMessage
 import com.syncchat.app.data.model.Message
 import com.syncchat.app.data.model.MessageStatus
 import com.syncchat.app.data.workers.MessageSyncWorker
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -48,7 +49,8 @@ class ChatViewModel(
     private val apiRepository: ApiRepository = RetrofitApiRepository(),
     private val authRepository: AuthRepository = FirebaseAuthRepository(),
     private val database: AppDatabase,
-    private val context: Context? = null // Optional context for WorkManager scheduling
+    private val context: Context? = null, // Optional context for WorkManager scheduling
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
@@ -251,7 +253,7 @@ class ChatViewModel(
     }
 
     fun startTyping() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             try {
                 signalRManager.getHubConnection()?.invoke("StartTyping", conversationId)?.blockingAwait()
             } catch (e: Exception) {
@@ -261,7 +263,7 @@ class ChatViewModel(
     }
 
     fun stopTyping() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             try {
                 signalRManager.getHubConnection()?.invoke("StopTyping", conversationId)?.blockingAwait()
             } catch (e: Exception) {
@@ -271,7 +273,7 @@ class ChatViewModel(
     }
 
     fun markAsRead(messageId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             try {
                 signalRManager.getHubConnection()?.invoke("MarkRead", conversationId, messageId)?.blockingAwait()
             } catch (e: Exception) {
@@ -290,7 +292,7 @@ class ChatViewModel(
                 // 1. Get file details
                 val fileDetails = getFileDetails(context, uri)
                 val fileName = fileDetails.first
-                val contentType = fileDetails.second ?: "image/jpeg"
+                val contentType = fileDetails.second ?: "application/octet-stream"
 
                 // 2. Request signed URL from backend
                 _uploadProgress.value = "Getting upload URL..."
@@ -308,7 +310,7 @@ class ChatViewModel(
                     .put(requestBody)
                     .build()
 
-                val response = withContext(Dispatchers.IO) {
+                val response = withContext(ioDispatcher) {
                     okHttpClient.newCall(request).execute()
                 }
 
@@ -318,13 +320,18 @@ class ChatViewModel(
                 }
                 response.close()
 
-                // 5. Send message with the public mediaUrl
+                // 5. Send message with the public mediaUrl and dynamic type placeholder
                 _uploadProgress.value = "Finalizing message..."
-                apiRepository.sendMessage(token, conversationId, "[Image]", uploadResponse.downloadUrl)
+                val displayText = when {
+                    contentType.startsWith("image/") -> "[Image]"
+                    contentType.startsWith("video/") -> "[Video]"
+                    else -> "[File] $fileName"
+                }
+                apiRepository.sendMessage(token, conversationId, displayText, uploadResponse.downloadUrl)
 
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Image send failed", e)
-                _errorMessage.value = "Failed to upload image. Please try again."
+                _errorMessage.value = "Error: ${e.localizedMessage ?: e.message ?: "Upload failed"}"
             } finally {
                 _isSending.value = false
                 _uploadProgress.value = null
@@ -354,21 +361,45 @@ class ChatViewModel(
     }
 
     private fun getFileDetails(context: Context, uri: Uri): Pair<String, String?> {
-        var name = "image_${System.currentTimeMillis()}.jpg"
-        val mimeType = context.contentResolver.getType(uri)
+        var mimeType = context.contentResolver.getType(uri)
         
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (nameIndex != -1) {
-                    name = cursor.getString(nameIndex)
+        // Query display name first
+        var name = ""
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1) {
+                        name = cursor.getString(nameIndex) ?: ""
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // Safe fallback if query fails
         }
+
+        // If we couldn't get the name from the query, use a timestamped default
+        if (name.isEmpty()) {
+            val extension = mimeType?.let { android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+            name = if (extension != null) {
+                "file_${System.currentTimeMillis()}.$extension"
+            } else {
+                "file_${System.currentTimeMillis()}"
+            }
+        }
+
+        // If MIME type is still null, resolve it from the filename extension
+        if (mimeType == null) {
+            val extension = name.substringAfterLast('.', "").lowercase()
+            if (extension.isNotEmpty()) {
+                mimeType = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+            }
+        }
+
         return Pair(name, mimeType)
     }
 
-    private suspend fun readFileBytes(context: Context, uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+    private suspend fun readFileBytes(context: Context, uri: Uri): ByteArray = withContext(ioDispatcher) {
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
             inputStream.readBytes()
         } ?: throw Exception("Failed to open input stream for URI: $uri")

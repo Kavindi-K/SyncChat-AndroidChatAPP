@@ -157,7 +157,7 @@ public class ChatHubTests
         _mockClientProxy.Verify(
             p => p.SendCoreAsync(
                 "UserTyping",
-                It.Is<object[]>(args => args.Length == 1),
+                It.Is<object[]>(args => args.Length == 2),
                 default
             ),
             Times.Once
@@ -202,7 +202,7 @@ public class ChatHubTests
         _mockClientProxy.Verify(
             p => p.SendCoreAsync(
                 "MessageRead",
-                It.Is<object[]>(args => args.Length == 1),
+                It.Is<object[]>(args => args.Length == 3),
                 default
             ),
             Times.Once

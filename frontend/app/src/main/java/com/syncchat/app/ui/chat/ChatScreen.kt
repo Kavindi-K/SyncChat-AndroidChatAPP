@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -300,12 +301,12 @@ fun ChatScreen(
                 ) {
                     // Attachment button
                     IconButton(
-                        onClick = { imagePickerLauncher.launch("image/*") },
+                        onClick = { imagePickerLauncher.launch("*/*") },
                         enabled = !isSending
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "Send Image",
+                            contentDescription = "Send File",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
@@ -396,21 +397,66 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Column {
-                // If contains image
+                // If contains media
                 if (!message.mediaUrl.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = message.mediaUrl,
-                        contentDescription = "Shared Image",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 200.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.Crop
-                    )
+                    if (message.text == "[Image]") {
+                        AsyncImage(
+                            model = message.mediaUrl,
+                            contentDescription = "Shared Image",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 200.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        // Render file/video attachment card
+                        val isVideo = message.text == "[Video]"
+                        val iconEmoji = if (isVideo) "🎥" else "📄"
+                        val titleText = if (isVideo) "Video Attachment" else {
+                            message.text.substringAfter("[File] ").trim().ifEmpty { "File Attachment" }
+                        }
+                        val context = LocalContext.current
+                        
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1E1E2E))
+                                .clickable {
+                                    try {
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(message.mediaUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        // Ignore
+                                    }
+                                }
+                                .padding(12.dp)
+                        ) {
+                            Text(text = iconEmoji, fontSize = 28.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = titleText,
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = if (isVideo) "Click to play" else "Click to view",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                if (message.text.isNotEmpty() && message.text != "[Image]") {
+                val isMediaMessage = !message.mediaUrl.isNullOrEmpty()
+                if (message.text.isNotEmpty() && (!isMediaMessage || (!message.text.startsWith("[Image]") && !message.text.startsWith("[Video]") && !message.text.startsWith("[File]")))) {
                     Text(
                         text = message.text,
                         color = Color.White,
