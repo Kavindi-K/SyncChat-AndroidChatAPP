@@ -28,7 +28,7 @@ import java.util.Date
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelTest {
 
-    private val testDispatcher = StandardTestDispatcher()
+    private lateinit var testDispatcher: kotlinx.coroutines.test.TestDispatcher
     private lateinit var mockApiRepo: ApiRepository
     private lateinit var mockAuthRepository: AuthRepository
     private lateinit var mockDb: AppDatabase
@@ -41,6 +41,7 @@ class ChatViewModelTest {
 
     @Before
     fun setUp() {
+        testDispatcher = StandardTestDispatcher()
         Dispatchers.setMain(testDispatcher)
 
         // Mock Firebase statics
@@ -55,6 +56,11 @@ class ChatViewModelTest {
         every { FirebaseAuth.getInstance() } returns mockAuth
         every { mockAuth.currentUser } returns mockFirebaseUser
         every { mockFirebaseUser.uid } returns "test-uid-123"
+
+        // Mock SignalR globally to prevent background crashes
+        mockkObject(com.syncchat.app.data.signalr.SignalRManager)
+        val mockSignalRManager = mockk<com.syncchat.app.data.signalr.SignalRManager>(relaxed = true)
+        every { com.syncchat.app.data.signalr.SignalRManager.getInstance() } returns mockSignalRManager
 
         // Mock repositories and database
         mockApiRepo = mockk(relaxed = true)
@@ -435,5 +441,124 @@ class ChatViewModelTest {
         io.mockk.coVerify(exactly = 0) { 
             mockMessageDao.deleteMessageById("pending-1")
         }
+    }
+
+    @Test
+    fun `sendImage fetches upload URL then uploads file to GCS and sends message`() = runTest {
+        // Arrange
+        val mockContext = mockk<android.content.Context>(relaxed = true)
+        val mockUri = mockk<android.net.Uri>(relaxed = true)
+        val mockContentResolver = mockk<android.content.ContentResolver>(relaxed = true)
+        val mockCursor = mockk<android.database.Cursor>(relaxed = true)
+        val mockInputStream = java.io.ByteArrayInputStream("dummy-image-bytes".toByteArray())
+
+        every { mockContext.contentResolver } returns mockContentResolver
+        every { mockContentResolver.getType(mockUri) } returns "image/png"
+        every { mockContentResolver.query(mockUri, null, null, null, null) } returns mockCursor
+        every { mockCursor.moveToFirst() } returns true
+        every { mockCursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) } returns 0
+        every { mockCursor.getString(0) } returns "photo.png"
+        every { mockContentResolver.openInputStream(mockUri) } returns mockInputStream
+
+        coEvery { mockAuthRepository.getIdToken() } returns "fake-token"
+
+        val mockUploadResponse = com.syncchat.app.data.api.UploadResponse(
+            uploadUrl = "https://gcs-upload-url.com/dummy",
+            downloadUrl = "https://gcs-download-url.com/dummy.png"
+        )
+        coEvery { mockApiRepo.getUploadUrl("fake-token", "photo.png", "image/png") } returns mockUploadResponse
+
+        mockkConstructor(okhttp3.OkHttpClient::class)
+        val mockCall = mockk<okhttp3.Call>(relaxed = true)
+        val mockResponse = mockk<okhttp3.Response>(relaxed = true)
+        
+        every { mockResponse.isSuccessful } returns true
+        every { mockResponse.code } returns 200
+        
+        every { anyConstructed<okhttp3.OkHttpClient>().newCall(any()) } returns mockCall
+        every { mockCall.execute() } returns mockResponse
+
+        val viewModel = ChatViewModel(
+            conversationId = "conv-1",
+            currentUserId = "test-uid-123",
+            apiRepository = mockApiRepo,
+            authRepository = mockAuthRepository,
+            database = mockDb,
+            ioDispatcher = testDispatcher
+        )
+
+        // Act
+        viewModel.sendImage(mockContext, mockUri)
+        advanceUntilIdle()
+
+        // Assert
+        coVerify(exactly = 1) { mockApiRepo.getUploadUrl("fake-token", "photo.png", "image/png") }
+        coVerify(exactly = 1) { mockApiRepo.sendMessage("fake-token", "conv-1", "[Image]", "https://gcs-download-url.com/dummy.png") }
+    }
+
+    @Test
+    fun `sendImage updates uploadProgress StateFlow correctly through stages`() = runTest {
+        // Arrange
+        val mockContext = mockk<android.content.Context>(relaxed = true)
+        val mockUri = mockk<android.net.Uri>(relaxed = true)
+        val mockContentResolver = mockk<android.content.ContentResolver>(relaxed = true)
+        val mockCursor = mockk<android.database.Cursor>(relaxed = true)
+        val mockInputStream = java.io.ByteArrayInputStream("dummy-image-bytes".toByteArray())
+
+        every { mockContext.contentResolver } returns mockContentResolver
+        every { mockContentResolver.getType(mockUri) } returns "image/png"
+        every { mockContentResolver.query(mockUri, null, null, null, null) } returns mockCursor
+        every { mockCursor.moveToFirst() } returns true
+        every { mockCursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) } returns 0
+        every { mockCursor.getString(0) } returns "photo.png"
+        every { mockContentResolver.openInputStream(mockUri) } returns mockInputStream
+
+        coEvery { mockAuthRepository.getIdToken() } returns "fake-token"
+
+        val mockUploadResponse = com.syncchat.app.data.api.UploadResponse(
+            uploadUrl = "https://gcs-upload-url.com/dummy",
+            downloadUrl = "https://gcs-download-url.com/dummy.png"
+        )
+        coEvery { mockApiRepo.getUploadUrl("fake-token", "photo.png", "image/png") } returns mockUploadResponse
+
+        mockkConstructor(okhttp3.OkHttpClient::class)
+        val mockCall = mockk<okhttp3.Call>(relaxed = true)
+        val mockResponse = mockk<okhttp3.Response>(relaxed = true)
+        
+        every { mockResponse.isSuccessful } returns true
+        every { mockResponse.code } returns 200
+        
+        every { anyConstructed<okhttp3.OkHttpClient>().newCall(any()) } returns mockCall
+        every { mockCall.execute() } returns mockResponse
+
+        val viewModel = ChatViewModel(
+            conversationId = "conv-1",
+            currentUserId = "test-uid-123",
+            apiRepository = mockApiRepo,
+            authRepository = mockAuthRepository,
+            database = mockDb,
+            ioDispatcher = testDispatcher
+        )
+
+        // Capture emissions
+        val progressValues = mutableListOf<String?>()
+        val job = launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.uploadProgress.collect { progressValues.add(it) }
+        }
+
+        // Act
+        viewModel.sendImage(mockContext, mockUri)
+        advanceUntilIdle()
+
+        // Assert
+        job.cancel()
+        
+        // Assert sequence
+        org.junit.Assert.assertTrue(progressValues.contains("Preparing upload..."))
+        org.junit.Assert.assertTrue(progressValues.contains("Getting upload URL..."))
+        org.junit.Assert.assertTrue(progressValues.contains("Reading file..."))
+        org.junit.Assert.assertTrue(progressValues.contains("Uploading file..."))
+        org.junit.Assert.assertTrue(progressValues.contains("Finalizing message..."))
+        org.junit.Assert.assertEquals(null, progressValues.last()) // Resets to null in finally
     }
 }

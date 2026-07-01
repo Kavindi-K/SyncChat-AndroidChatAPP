@@ -82,6 +82,7 @@ builder.Services.AddSwaggerGen(c =>
 
 // Register Firebase auth service (can be replaced by mock in tests)
 builder.Services.AddSingleton<IFirebaseAuthService, FirebaseAuthService>();
+builder.Services.AddSingleton<IUploadService, FirebaseUploadService>();
 
 // Register Application UseCases
 builder.Services.AddScoped<UserSearchUseCase>();

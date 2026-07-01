@@ -20,12 +20,13 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthViewModelTest {
 
-    private val testDispatcher = StandardTestDispatcher()
+    private lateinit var testDispatcher: kotlinx.coroutines.test.TestDispatcher
     private lateinit var mockRepo: AuthRepository
     private lateinit var viewModel: AuthViewModel
 
     @Before
     fun setUp() {
+        testDispatcher = StandardTestDispatcher()
         Dispatchers.setMain(testDispatcher)
         mockRepo = mockk()
         viewModel = AuthViewModel(mockRepo)

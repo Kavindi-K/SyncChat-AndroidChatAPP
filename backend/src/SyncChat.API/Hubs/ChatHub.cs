@@ -50,7 +50,8 @@ public class ChatHub : Hub
         var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
         if (conversation == null)
         {
-            throw new HubException("Conversation not found.");
+            // Conversation may have been deleted; ignore silently (stale client cache)
+            return;
         }
 
         if (!conversation.ParticipantUids.Contains(senderId))
@@ -82,7 +83,8 @@ public class ChatHub : Hub
         var conversation = await _conversationRepository.GetConversationByIdAsync(conversationId);
         if (conversation == null)
         {
-            throw new HubException("Conversation not found.");
+            // Conversation may have been deleted; ignore silently (stale client cache)
+            return;
         }
 
         if (!conversation.ParticipantUids.Contains(currentUserId))

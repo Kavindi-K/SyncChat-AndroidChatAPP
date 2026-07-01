@@ -16,7 +16,10 @@ using Moq;
 using SyncChat.Application.Interfaces;
 using SyncChat.Application.Models;
 using SyncChat.Infrastructure.Repositories;
+using SyncChat.API.Controllers;
 using Xunit;
+
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace SyncChat.API.Tests;
 
@@ -24,6 +27,7 @@ public class IntegrationTests : IAsyncLifetime
 {
     private readonly WebApplicationFactory<Program> _factory;
     private readonly Mock<IFirebaseAuthService> _mockAuthService;
+    private readonly Mock<IUploadService> _mockUploadService;
     private FirestoreDb? _db;
     private const string ProjectId = "syncchat-b0889";
 
@@ -45,6 +49,11 @@ public class IntegrationTests : IAsyncLifetime
         }
 
         _mockAuthService = new Mock<IFirebaseAuthService>();
+        _mockUploadService = new Mock<IUploadService>();
+
+        _mockUploadService.Setup(x => x.GenerateSignedUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(("https://storage.googleapis.com/syncchat-b0889.appspot.com/uploads/user-a/dummy-file.jpg?token=mocked", 
+                           "https://firebasestorage.googleapis.com/v0/b/syncchat-b0889.appspot.com/o/uploads%2Fuser-a%2Fdummy-file.jpg?alt=media"));
 
         _factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
@@ -53,6 +62,7 @@ public class IntegrationTests : IAsyncLifetime
                 builder.ConfigureServices(services =>
                 {
                     services.AddSingleton(_mockAuthService.Object);
+                    services.AddSingleton(_mockUploadService.Object);
 
                     // Seed FirestoreDb pointing to emulator
                     var db = FirestoreDb.Create(ProjectId);
@@ -312,5 +322,41 @@ public class IntegrationTests : IAsyncLifetime
         
         Assert.NotNull(exception);
         Assert.Contains("401", exception.Message); // Verifies 401 Unauthorized
+    }
+
+    [Fact]
+    public async Task GetUploadUrl_WithValidToken_Returns200AndValidHttpsUrl()
+    {
+        // Arrange
+        var client = CreateAuthenticatedClient("user-a", "alice@test.com", "Alice");
+        var payload = new { fileName = "test.png", contentType = "image/png" };
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await client.PostAsync("/api/upload", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var uploadResponse = JsonSerializer.Deserialize<UploadResponse>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        
+        Assert.NotNull(uploadResponse);
+        Assert.StartsWith("https://", uploadResponse.UploadUrl);
+        Assert.StartsWith("https://", uploadResponse.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task GetUploadUrl_WithoutToken_Returns401Unauthorized()
+    {
+        // Arrange
+        var client = _factory.CreateClient(); // No auth token
+        var payload = new { fileName = "test.png", contentType = "image/png" };
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await client.PostAsync("/api/upload", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 }
