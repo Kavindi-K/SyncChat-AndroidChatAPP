@@ -23,7 +23,7 @@ public class FirestoreUserRepository : IUserRepository
         return snapshot.Exists;
     }
 
-    public async Task UpsertUserAsync(string uid, string displayName, string email, string? photoUrl, string[] fcmTokens)
+    public async Task UpsertUserAsync(string uid, string displayName, string email, string? photoUrl, string[]? fcmTokens)
     {
         var docRef = _db.Collection("users").Document(uid);
         var snapshot = await docRef.GetSnapshotAsync();
@@ -31,9 +31,13 @@ public class FirestoreUserRepository : IUserRepository
         var data = new Dictionary<string, object>
         {
             { "displayName", displayName },
-            { "email", email },
-            { "fcmTokens", fcmTokens }
+            { "email", email }
         };
+
+        if (fcmTokens != null)
+        {
+            data.Add("fcmTokens", fcmTokens);
+        }
 
         if (photoUrl != null)
         {
@@ -43,6 +47,10 @@ public class FirestoreUserRepository : IUserRepository
         if (!snapshot.Exists)
         {
             data.Add("createdAt", Timestamp.FromDateTime(DateTime.UtcNow));
+            if (fcmTokens == null)
+            {
+                data.Add("fcmTokens", Array.Empty<string>());
+            }
         }
 
         await docRef.SetAsync(data, SetOptions.MergeAll);
@@ -147,5 +155,99 @@ public class FirestoreUserRepository : IUserRepository
             FcmTokens = fcmTokensList.ToArray(),
             CreatedAt = createdAt
         };
+    }
+
+    public async Task StoreFcmTokenAsync(string uid, string token)
+    {
+        Console.WriteLine($"[StoreFcmTokenAsync] Entering. Uid: '{uid}', Token: '{token}'");
+        if (string.IsNullOrWhiteSpace(uid) || string.IsNullOrWhiteSpace(token))
+        {
+            Console.WriteLine("[StoreFcmTokenAsync] Uid or Token is null or whitespace. Exiting.");
+            return;
+        }
+
+        var docRef = _db.Collection("users").Document(uid);
+        var snapshot = await docRef.GetSnapshotAsync();
+
+        var existing = new List<string>();
+        if (snapshot.Exists && snapshot.ContainsField("fcmTokens"))
+        {
+            try
+            {
+                var tokensObj = snapshot.GetValue<object>("fcmTokens");
+                if (tokensObj is List<object> list)
+                {
+                    foreach (var item in list)
+                        if (item is string s) existing.Add(s);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[StoreFcmTokenAsync] Error parsing existing tokens: {ex.Message}");
+            }
+        }
+
+        Console.WriteLine($"[StoreFcmTokenAsync] Existing tokens count: {existing.Count}");
+
+        // Add new token, deduplicate, cap at 5 (newest first)
+        existing.Remove(token);
+        existing.Insert(0, token);
+        if (existing.Count > 5) existing = existing.Take(5).ToList();
+
+        Console.WriteLine($"[StoreFcmTokenAsync] Saving tokens: {string.Join(", ", existing)}");
+
+        try
+        {
+            await docRef.SetAsync(
+                new Dictionary<string, object> { { "fcmTokens", existing } },
+                SetOptions.MergeAll);
+            Console.WriteLine("[StoreFcmTokenAsync] Saved successfully to Firestore.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[StoreFcmTokenAsync] Exception saving to Firestore: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task RemoveFcmTokensAsync(string uid, string[] tokensToRemove)
+    {
+        if (string.IsNullOrWhiteSpace(uid) || tokensToRemove == null || tokensToRemove.Length == 0)
+            return;
+
+        var docRef = _db.Collection("users").Document(uid);
+        var snapshot = await docRef.GetSnapshotAsync();
+        if (!snapshot.Exists || !snapshot.ContainsField("fcmTokens"))
+            return;
+
+        var existing = new List<string>();
+        try
+        {
+            var tokensObj = snapshot.GetValue<object>("fcmTokens");
+            if (tokensObj is List<object> list)
+            {
+                foreach (var item in list)
+                {
+                    if (item is string s) existing.Add(s);
+                }
+            }
+        }
+        catch { /* ignore */ }
+
+        var modified = false;
+        foreach (var token in tokensToRemove)
+        {
+            if (existing.Remove(token))
+            {
+                modified = true;
+            }
+        }
+
+        if (modified)
+        {
+            await docRef.SetAsync(
+                new Dictionary<string, object> { { "fcmTokens", existing } },
+                SetOptions.MergeAll);
+        }
     }
 }

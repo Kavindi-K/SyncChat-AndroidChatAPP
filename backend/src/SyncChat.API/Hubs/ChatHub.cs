@@ -15,15 +15,21 @@ public class ChatHub : Hub
     private readonly SendMessageUseCase _sendMessageUseCase;
     private readonly IConversationRepository _conversationRepository;
     private readonly IMessageRepository _messageRepository;
+    private readonly IUserRepository _userRepository;
+    private readonly INotificationService _notificationService;
 
     public ChatHub(
         SendMessageUseCase sendMessageUseCase,
         IConversationRepository conversationRepository,
-        IMessageRepository messageRepository)
+        IMessageRepository messageRepository,
+        IUserRepository userRepository,
+        INotificationService notificationService)
     {
         _sendMessageUseCase = sendMessageUseCase;
         _conversationRepository = conversationRepository;
         _messageRepository = messageRepository;
+        _userRepository = userRepository;
+        _notificationService = notificationService;
     }
 
     public override async Task OnConnectedAsync()
@@ -66,9 +72,25 @@ public class ChatHub : Hub
         var recipientUid = conversation.ParticipantUids.FirstOrDefault(uid => uid != senderId);
         if (!string.IsNullOrEmpty(recipientUid))
         {
-            // Serialize the message to a JSON string because the Android client expects a single String payload
+            // Deliver in real time via SignalR
             var payloadStr = System.Text.Json.JsonSerializer.Serialize(message);
             await Clients.Group(recipientUid).SendAsync("NewMessage", payloadStr);
+
+            // Push notification for when the recipient is offline / app in background
+            var recipient = await _userRepository.GetUserByIdAsync(recipientUid);
+            if (recipient?.FcmTokens?.Length > 0)
+            {
+                var senderProfile = await _userRepository.GetUserByIdAsync(senderId);
+                var senderName = senderProfile?.DisplayName ?? "SyncChat";
+                // Fire-and-forget — never block the SignalR response on FCM
+                _ = _notificationService.SendMessageNotificationAsync(
+                    recipient.FcmTokens,
+                    senderName,
+                    text,
+                    conversationId,
+                    senderId,
+                    recipientUid);
+            }
         }
     }
 

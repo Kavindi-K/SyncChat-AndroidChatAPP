@@ -86,4 +86,8 @@ class RetrofitApiRepository : ApiRepository {
     ): UploadResponse {
         return service.getUploadUrl("Bearer $token", UploadRequest(fileName, contentType))
     }
+
+    override suspend fun registerFcmToken(token: String, fcmToken: String) {
+        service.registerFcmToken("Bearer $token", FcmTokenRequestDto(fcmToken))
+    }
 }

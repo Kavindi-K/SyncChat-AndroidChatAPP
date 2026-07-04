@@ -17,6 +17,8 @@ public class ChatHubTests
 {
     private readonly Mock<IConversationRepository> _mockConversationRepository;
     private readonly Mock<IMessageRepository> _mockMessageRepository;
+    private readonly Mock<IUserRepository> _mockUserRepository;
+    private readonly Mock<INotificationService> _mockNotificationService;
     private readonly SendMessageUseCase _sendMessageUseCase;
     private readonly ChatHub _hub;
 
@@ -29,6 +31,8 @@ public class ChatHubTests
     {
         _mockConversationRepository = new Mock<IConversationRepository>();
         _mockMessageRepository = new Mock<IMessageRepository>();
+        _mockUserRepository = new Mock<IUserRepository>();
+        _mockNotificationService = new Mock<INotificationService>();
 
         // Instantiate actual SendMessageUseCase using mocks
         _sendMessageUseCase = new SendMessageUseCase(
@@ -39,7 +43,9 @@ public class ChatHubTests
         _hub = new ChatHub(
             _sendMessageUseCase,
             _mockConversationRepository.Object,
-            _mockMessageRepository.Object
+            _mockMessageRepository.Object,
+            _mockUserRepository.Object,
+            _mockNotificationService.Object
         );
 
         _mockClients = new Mock<IHubCallerClients>();
@@ -91,6 +97,21 @@ public class ChatHubTests
             .Setup(c => c.Group(recipientId))
             .Returns(_mockClientProxy.Object);
 
+        // Setup mock user profiles
+        var recipientUser = new UserProfile
+        {
+            Uid = recipientId,
+            DisplayName = "Recipient User",
+            FcmTokens = new[] { "token-xyz-123" }
+        };
+        var senderUser = new UserProfile
+        {
+            Uid = senderId,
+            DisplayName = "Sender User"
+        };
+        _mockUserRepository.Setup(r => r.GetUserByIdAsync(recipientId)).ReturnsAsync(recipientUser);
+        _mockUserRepository.Setup(r => r.GetUserByIdAsync(senderId)).ReturnsAsync(senderUser);
+
         // Act
         await _hub.SendMessage(conversationId, text);
 
@@ -108,6 +129,18 @@ public class ChatHubTests
                 "NewMessage",
                 It.Is<object[]>(args => args.Length == 1),
                 default
+            ),
+            Times.Once
+        );
+
+        _mockNotificationService.Verify(
+            n => n.SendMessageNotificationAsync(
+                It.Is<string[]>(tokens => tokens.Contains("token-xyz-123")),
+                "Sender User",
+                text,
+                conversationId,
+                senderId,
+                recipientId
             ),
             Times.Once
         );

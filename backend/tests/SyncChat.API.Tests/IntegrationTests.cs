@@ -359,4 +359,45 @@ public class IntegrationTests : IAsyncLifetime
         // Assert
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
+
+    [Fact]
+    public async Task RegisterFcmToken_WithValidToken_Returns200AndSavesToFirestore()
+    {
+        // Arrange
+        using var scope = _factory.Services.CreateScope();
+        var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+
+        // Pre-create user Alice
+        await userRepo.UpsertUserAsync("alice-uid", "Alice", "alice@test.com", null, Array.Empty<string>());
+
+        var client = CreateAuthenticatedClient("alice-uid", "alice@test.com", "Alice");
+        var payload = new { token = "new-fcm-token-12345" };
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await client.PostAsync("/api/users/me/fcm-token", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Verify stored in Firestore
+        var userProfile = await userRepo.GetUserByIdAsync("alice-uid");
+        Assert.NotNull(userProfile);
+        Assert.Contains("new-fcm-token-12345", userProfile.FcmTokens);
+    }
+
+    [Fact]
+    public async Task RegisterFcmToken_WithoutToken_Returns401Unauthorized()
+    {
+        // Arrange
+        var client = _factory.CreateClient(); // No auth token
+        var payload = new { token = "fcm-token-xyz" };
+        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await client.PostAsync("/api/users/me/fcm-token", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }

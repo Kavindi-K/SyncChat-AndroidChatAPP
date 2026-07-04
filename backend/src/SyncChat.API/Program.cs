@@ -14,6 +14,7 @@ using SyncChat.Infrastructure.Services;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 
+AppContext.SetSwitch("System.Net.DisableIPv6", true);
 var builder = WebApplication.CreateBuilder(args);
 var isTestEnv = builder.Environment.EnvironmentName == "Testing";
 
@@ -83,6 +84,7 @@ builder.Services.AddSwaggerGen(c =>
 // Register Firebase auth service (can be replaced by mock in tests)
 builder.Services.AddSingleton<IFirebaseAuthService, FirebaseAuthService>();
 builder.Services.AddSingleton<IUploadService, FirebaseUploadService>();
+builder.Services.AddScoped<INotificationService, FirebaseNotificationService>();
 
 // Register Application UseCases
 builder.Services.AddScoped<UserSearchUseCase>();

@@ -75,7 +75,14 @@ interface SyncChatApiService {
         @Header("Authorization") bearerToken: String,
         @Body request: UploadRequest
     ): UploadResponse
+
+    @POST("api/users/me/fcm-token")
+    suspend fun registerFcmToken(
+        @Header("Authorization") bearerToken: String,
+        @Body request: FcmTokenRequestDto
+    )
 }
 
 data class UploadRequest(val fileName: String, val contentType: String)
 data class UploadResponse(val uploadUrl: String, val downloadUrl: String)
+data class FcmTokenRequestDto(val token: String)
