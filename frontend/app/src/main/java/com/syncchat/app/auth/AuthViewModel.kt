@@ -138,8 +138,7 @@ class AuthViewModel(
                     val data = hashMapOf<String, Any>(
                         "displayName" to (user.displayName ?: ""),
                         "email" to (user.email ?: ""),
-                        "photoUrl" to (user.photoUrl?.toString() ?: ""),
-                        "fcmTokens" to emptyList<String>()
+                        "photoUrl" to (user.photoUrl?.toString() ?: "")
                     )
                     db.collection("users").document(user.uid)
                         .set(data, com.google.firebase.firestore.SetOptions.merge())

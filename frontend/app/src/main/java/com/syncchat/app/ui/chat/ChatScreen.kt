@@ -49,6 +49,16 @@ fun ChatScreen(
     otherUser: UserProfile,
     onBackClick: () -> Unit
 ) {
+    // Set active conversation ID for FCM foreground check
+    DisposableEffect(conversationId) {
+        com.syncchat.app.SyncChatMessagingService.activeChatConversationId = conversationId
+        onDispose {
+            if (com.syncchat.app.SyncChatMessagingService.activeChatConversationId == conversationId) {
+                com.syncchat.app.SyncChatMessagingService.activeChatConversationId = null
+            }
+        }
+    }
+
     val context = LocalContext.current
     val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
     val database = remember { com.syncchat.app.data.local.AppDatabase.getDatabase(context) }

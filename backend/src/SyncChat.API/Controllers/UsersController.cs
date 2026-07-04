@@ -77,7 +77,7 @@ public class UsersController : ControllerBase
                 request.DisplayName,
                 request.Email,
                 request.PhotoUrl ?? string.Empty,
-                request.FcmTokens ?? Array.Empty<string>());
+                null); // Ignore FCM tokens in profile sync to prevent overwriting registered tokens
 
             return Ok(new { Success = true, Message = "Profile updated successfully" });
         }
@@ -85,6 +85,28 @@ public class UsersController : ControllerBase
         {
             _logger.LogError(ex, "Failed to update profile for UID {Uid}", uid);
             return StatusCode(500, new { Error = "Database update failed" });
+        }
+    }
+
+    [HttpPost("me/fcm-token")]
+    public async Task<IActionResult> RegisterFcmToken([FromBody] FcmTokenRequest request)
+    {
+        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(uid))
+            return Unauthorized(new { Error = "Uid claim missing" });
+
+        if (string.IsNullOrWhiteSpace(request.Token))
+            return BadRequest(new { Error = "Token is required" });
+
+        try
+        {
+            await _userRepository.StoreFcmTokenAsync(uid, request.Token);
+            return Ok(new { Success = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to store FCM token for UID {Uid}", uid);
+            return StatusCode(500, new { Error = "Failed to store FCM token" });
         }
     }
 
@@ -100,3 +122,6 @@ public record UpsertProfileRequest(
     string Email,
     string? PhotoUrl,
     string[]? FcmTokens);
+
+public record FcmTokenRequest(string Token);
+

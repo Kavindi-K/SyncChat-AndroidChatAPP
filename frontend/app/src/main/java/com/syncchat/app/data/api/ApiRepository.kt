@@ -45,4 +45,6 @@ interface ApiRepository {
         fileName: String,
         contentType: String
     ): UploadResponse
+
+    suspend fun registerFcmToken(token: String, fcmToken: String)
 }
