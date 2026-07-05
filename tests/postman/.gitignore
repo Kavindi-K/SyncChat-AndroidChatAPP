@@ -1,0 +1,5 @@
+# Newman HTML reports (generated, not committed)
+newman-report.html
+
+# Local environment with real tokens (never commit secrets)
+syncchat.local.environment.json
