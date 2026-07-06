@@ -1,0 +1,34 @@
+name: Newman API Tests
+on:
+  push:
+    branches: [feature/api-e2e-testing, main]
+  pull_request:
+    branches: [main]
+jobs:
+  newman:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Newman
+        run: npm install -g newman newman-reporter-htmlextra
+        
+      - name: Start Backend (for PR runs against local)
+        # In staging CI, replace this step with pointing to STAGING_URL env var
+        run: echo "Skipping — runs against staging in production CI"
+        
+      - name: Run Newman Tests
+        run: |
+          newman run tests/postman/syncchat.postman_collection.json \
+            --env-var "base_url=${{ secrets.STAGING_URL }}" \
+            --env-var "auth_token=${{ secrets.CI_TEST_AUTH_TOKEN }}" \
+            --env-var "target_user_id=${{ secrets.CI_TARGET_USER_ID }}" \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export newman-report.html
+            
+      - name: Upload Newman Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-html-report
+          path: newman-report.html
