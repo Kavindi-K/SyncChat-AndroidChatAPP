@@ -132,6 +132,10 @@ class MainActivity : ComponentActivity() {
                         val convId = activeConversationId
                         val otherUser = activeConversationUser
                         if (convId != null && otherUser != null) {
+                            androidx.activity.compose.BackHandler {
+                                activeConversationId = null
+                                activeConversationUser = null
+                            }
                             ChatScreen(
                                 conversationId = convId,
                                 otherUser = otherUser,

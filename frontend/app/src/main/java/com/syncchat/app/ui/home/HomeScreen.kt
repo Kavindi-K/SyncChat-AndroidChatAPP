@@ -61,6 +61,10 @@ fun HomeScreen(
     )
 
     val conversations by homeViewModel.conversations.collectAsState()
+    
+    // Only show conversations that actually have a message sent
+    val activeConversations = conversations.filter { it.lastMessage != null && it.lastMessage.text.isNotEmpty() }
+    
     val profiles by homeViewModel.userProfiles.collectAsState()
     val searchResults by homeViewModel.searchResults.collectAsState()
     val isSearching by homeViewModel.isSearching.collectAsState()
@@ -82,7 +86,7 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = currentUserEmail,
+                            text = currentUserName,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray
                         )
@@ -104,7 +108,11 @@ fun HomeScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showSearchDialog = true },
+                onClick = {
+                    searchQuery = ""
+                    homeViewModel.searchUsers("")
+                    showSearchDialog = true
+                },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 shape = CircleShape
@@ -123,7 +131,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (conversations.isEmpty()) {
+            if (activeConversations.isEmpty()) {
                 // Empty state view
                 Column(
                     modifier = Modifier
@@ -150,7 +158,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
-                    items(conversations) { conversation ->
+                    items(activeConversations) { conversation ->
                         val otherUid = conversation.participantUids.firstOrNull { it != currentUserId }
                         val otherProfile = profiles[otherUid] ?: UserProfile(
                             uid = otherUid ?: "",
@@ -208,7 +216,7 @@ fun HomeScreen(
                                     searchQuery = it
                                     homeViewModel.searchUsers(it)
                                 },
-                                placeholder = { Text("Search by name or email...") },
+                                placeholder = { Text("Search by name...") },
                                 leadingIcon = {
                                     Icon(imageVector = Icons.Default.Search, contentDescription = null)
                                 },
@@ -238,6 +246,15 @@ fun HomeScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
+                            if (searchQuery.isNotEmpty() && !isSearching && searchResults.isNotEmpty()) {
+                                Text(
+                                    text = "Found ${searchResults.size} user(s)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color.LightGray,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+
                             if (isSearching) {
                                 Box(
                                     modifier = Modifier
@@ -255,7 +272,7 @@ fun HomeScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (searchQuery.length < 2) "Type at least 2 characters to search" else "No users found",
+                                        text = "No users found",
                                         color = Color.Gray,
                                         style = MaterialTheme.typography.bodyMedium
                                     )

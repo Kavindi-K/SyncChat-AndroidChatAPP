@@ -170,11 +170,6 @@ fun ChatScreen(
                                 fontSize = 16.sp,
                                 color = Color.White
                             )
-                            Text(
-                                text = "Active Now",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF00FF88) // Glowing green active indicator
-                            )
                         }
                     }
                 },

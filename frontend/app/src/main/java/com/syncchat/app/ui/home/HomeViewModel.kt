@@ -185,47 +185,43 @@ class HomeViewModel(
     }
 
     fun searchUsers(query: String) {
-        if (query.trim().length < 2) {
-            _searchResults.value = emptyList()
-            return
-        }
-
         viewModelScope.launch {
             _isSearching.value = true
             try {
                 val term = query.trim()
-                val capitalizedTerm = term.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+                val capitalizedTerm = if (term.isNotEmpty()) term.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() } else ""
                 
-                // Get all users matching term as prefix in displayName or email
-                val nameQueryTask = firestore.collection("users")
-                    .orderBy("displayName")
-                    .startAt(term)
-                    .endAt(term + "\uf8ff")
-                    .limit(20)
-                    .get()
+                // Get all users matching term as prefix in displayName
+                val nameQueryTask = if (term.isNotEmpty()) {
+                    firestore.collection("users")
+                        .orderBy("displayName")
+                        .startAt(term)
+                        .endAt(term + "\uf8ff")
+                        .limit(50)
+                        .get()
+                } else {
+                    firestore.collection("users")
+                        .orderBy("displayName")
+                        .limit(50)
+                        .get()
+                }
 
-                val nameCapQueryTask = firestore.collection("users")
-                    .orderBy("displayName")
-                    .startAt(capitalizedTerm)
-                    .endAt(capitalizedTerm + "\uf8ff")
-                    .limit(20)
-                    .get()
-                
-                val emailQueryTask = firestore.collection("users")
-                    .orderBy("email")
-                    .startAt(term)
-                    .endAt(term + "\uf8ff")
-                    .limit(20)
-                    .get()
+                val nameCapQueryTask = if (capitalizedTerm.isNotEmpty()) {
+                    firestore.collection("users")
+                        .orderBy("displayName")
+                        .startAt(capitalizedTerm)
+                        .endAt(capitalizedTerm + "\uf8ff")
+                        .limit(50)
+                        .get()
+                } else null
                 
                 val nameSnapshot = nameQueryTask.await()
-                val nameCapSnapshot = nameCapQueryTask.await()
-                val emailSnapshot = emailQueryTask.await()
+                val nameCapSnapshot = nameCapQueryTask?.await()
                 
-                val results = mutableListOf<UserProfile>()
+                var results = mutableListOf<UserProfile>()
                 val seenUids = mutableSetOf<String>()
                 
-                val allDocs = nameSnapshot.documents + nameCapSnapshot.documents + emailSnapshot.documents
+                val allDocs = nameSnapshot.documents + (nameCapSnapshot?.documents ?: emptyList())
                 for (doc in allDocs) {
                     val uid = doc.id
                     if (uid != currentUserId && seenUids.add(uid)) {
@@ -239,6 +235,9 @@ class HomeViewModel(
                         )
                     }
                 }
+                
+                // Sort alphabetically by displayName
+                results.sortBy { it.displayName.lowercase(java.util.Locale.getDefault()) }
                 
                 _searchResults.value = results
             } catch (e: Exception) {
