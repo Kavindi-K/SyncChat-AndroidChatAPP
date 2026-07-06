@@ -59,13 +59,12 @@ fun SplashScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Icon / Logo
-            Icon(
-                imageVector = Icons.Default.Send,
+            // Custom App Logo
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = com.syncchat.app.R.drawable.ic_launcher_foreground),
                 contentDescription = "SyncChat Logo",
-                tint = Color(0xFF6C63FF), // Neon Purple/Indigo
                 modifier = Modifier
-                    .size(96.dp)
+                    .size(120.dp)
                     .scale(scale)
                     .alpha(alpha)
             )
