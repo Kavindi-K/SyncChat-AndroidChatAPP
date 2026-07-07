@@ -21,32 +21,43 @@ var isTestEnv = builder.Environment.EnvironmentName == "Testing";
 // 1. Initialize Firebase Admin SDK (skipped in test environment)
 if (!isTestEnv)
 {
-    var credentialPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
-    if (string.IsNullOrEmpty(credentialPath))
-    {
-        if (File.Exists("firebase-service-account.json"))
-            credentialPath = "firebase-service-account.json";
-        else if (File.Exists("../firebase-service-account.json"))
-            credentialPath = "../firebase-service-account.json";
-        else if (File.Exists("../../firebase-service-account.json"))
-            credentialPath = "../../firebase-service-account.json";
-    }
-
     if (FirebaseApp.DefaultInstance == null)
     {
-        if (!string.IsNullOrEmpty(credentialPath) && File.Exists(credentialPath))
+        // Option A: Railway/Cloud — credentials JSON provided directly as env var
+        var credentialsJson = Environment.GetEnvironmentVariable("FIREBASE_CREDENTIALS_JSON");
+        if (!string.IsNullOrEmpty(credentialsJson))
         {
-            var fullPath = Path.GetFullPath(credentialPath);
-            Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", fullPath);
-
-#pragma warning disable CS0618 // GoogleCredential.FromStream — no non-deprecated alternative for AppOptions
-            using var stream = File.OpenRead(fullPath);
-            FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromStream(stream) });
+#pragma warning disable CS0618
+            using var jsonStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(credentialsJson));
+            FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromStream(jsonStream) });
 #pragma warning restore CS0618
         }
         else
         {
-            FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.GetApplicationDefault() });
+            // Option B: Local dev — credentials loaded from file path
+            var credentialPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
+            if (string.IsNullOrEmpty(credentialPath))
+            {
+                if (File.Exists("firebase-service-account.json"))
+                    credentialPath = "firebase-service-account.json";
+                else if (File.Exists("../firebase-service-account.json"))
+                    credentialPath = "../firebase-service-account.json";
+                else if (File.Exists("../../firebase-service-account.json"))
+                    credentialPath = "../../firebase-service-account.json";
+            }
+
+            if (!string.IsNullOrEmpty(credentialPath) && File.Exists(credentialPath))
+            {
+                var fullPath = Path.GetFullPath(credentialPath);
+#pragma warning disable CS0618
+                using var stream = File.OpenRead(fullPath);
+                FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromStream(stream) });
+#pragma warning restore CS0618
+            }
+            else
+            {
+                FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.GetApplicationDefault() });
+            }
         }
     }
 }
