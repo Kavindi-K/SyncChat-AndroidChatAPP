@@ -42,6 +42,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.UUID
+import java.io.File
 
 class ChatViewModel(
     private val conversationId: String,
@@ -335,6 +336,58 @@ class ChatViewModel(
             } finally {
                 _isSending.value = false
                 _uploadProgress.value = null
+            }
+        }
+    }
+
+    fun sendVoiceMessage(file: File) {
+        viewModelScope.launch {
+            _isSending.value = true
+            _uploadProgress.value = "Preparing upload..."
+            try {
+                val token = authRepository.getIdToken() ?: return@launch
+
+                val fileName = file.name
+                val contentType = "audio/mp4"
+
+                // 1. Request signed URL from backend
+                _uploadProgress.value = "Getting upload URL..."
+                val uploadResponse = apiRepository.getUploadUrl(token, fileName, contentType)
+
+                // 2. Read file bytes
+                _uploadProgress.value = "Reading file..."
+                val fileBytes = withContext(ioDispatcher) { file.readBytes() }
+
+                // 3. PUT file directly to GCS via the signed URL
+                _uploadProgress.value = "Uploading file..."
+                val requestBody = fileBytes.toRequestBody(contentType.toMediaTypeOrNull())
+                val request = Request.Builder()
+                    .url(uploadResponse.uploadUrl)
+                    .put(requestBody)
+                    .build()
+
+                val response = withContext(ioDispatcher) {
+                    okHttpClient.newCall(request).execute()
+                }
+
+                if (!response.isSuccessful) {
+                    response.close()
+                    throw Exception("GCS Upload failed with status code ${response.code}")
+                }
+                response.close()
+
+                // 4. Send message with the public mediaUrl and voice message placeholder
+                _uploadProgress.value = "Finalizing message..."
+                apiRepository.sendMessage(token, conversationId, "[Voice Message]", uploadResponse.downloadUrl)
+
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Voice message send failed", e)
+                _errorMessage.value = "Error: ${e.localizedMessage ?: e.message ?: "Upload failed"}"
+            } finally {
+                _isSending.value = false
+                _uploadProgress.value = null
+                // Clean up the temporary file after upload
+                file.delete()
             }
         }
     }

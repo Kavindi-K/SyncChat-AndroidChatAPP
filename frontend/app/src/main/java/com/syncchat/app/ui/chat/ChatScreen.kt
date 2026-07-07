@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -93,6 +95,23 @@ fun ChatScreen(
     }
 
     val listState = rememberLazyListState()
+
+    var isRecording by remember { mutableStateOf(false) }
+    val audioRecorder = remember { AudioRecorderHelper(context) }
+    var voiceFile by remember { mutableStateOf<java.io.File?>(null) }
+    
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            voiceFile = audioRecorder.startRecording()
+            if (voiceFile != null) {
+                isRecording = true
+            }
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission required for voice messages", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size, typingUsers.size) {
@@ -351,26 +370,48 @@ fun ChatScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Send Button
+                    // Send / Record Button
+                    val isTextEmpty = textInput.isBlank()
+                    
                     IconButton(
                         onClick = {
-                            if (textInput.isNotBlank()) {
+                            if (!isTextEmpty) {
                                 chatViewModel.sendMessage(textInput)
                                 textInput = ""
                                 keyboardController?.hide()
+                            } else {
+                                if (isRecording) {
+                                    // Stop recording and send
+                                    isRecording = false
+                                    audioRecorder.stopRecording()
+                                    voiceFile?.let { 
+                                        chatViewModel.sendVoiceMessage(it)
+                                        voiceFile = null
+                                    }
+                                } else {
+                                    // Check permission and start recording
+                                    if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                        voiceFile = audioRecorder.startRecording()
+                                        if (voiceFile != null) {
+                                            isRecording = true
+                                        }
+                                    } else {
+                                        audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
                             }
                         },
-                        enabled = !isSending && textInput.isNotBlank(),
+                        enabled = !isSending,
                         modifier = Modifier
                             .size(44.dp)
                             .background(
-                                color = if (textInput.isNotBlank() && !isSending) MaterialTheme.colorScheme.primary else Color.DarkGray,
+                                color = if (isRecording) Color.Red else if (!isTextEmpty) MaterialTheme.colorScheme.primary else Color.DarkGray,
                                 shape = CircleShape
                             )
                     ) {
                         Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Send",
+                            imageVector = if (!isTextEmpty) Icons.Default.PlayArrow else if (isRecording) Icons.Default.Clear else Icons.Default.Add,
+                            contentDescription = if (!isTextEmpty) "Send" else if (isRecording) "Stop Recording" else "Record Voice",
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
