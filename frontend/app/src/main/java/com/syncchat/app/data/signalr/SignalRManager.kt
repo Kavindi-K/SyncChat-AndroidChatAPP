@@ -67,8 +67,10 @@ class SignalRManager {
                     if (user != null) {
                         try {
                             val task = user.getIdToken(false)
-                            // Await synchronously for RxJava callable
-                            com.google.android.gms.tasks.Tasks.await(task).token ?: ""
+                            val token = com.google.android.gms.tasks.Tasks.await(task).token ?: ""
+                            Log.e("FIREBASE_TOKEN", "COPY THIS TOKEN: $token")
+                            return@fromCallable token
+
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to get token", e)
                             ""
