@@ -21,8 +21,8 @@ class RetrofitApiRepository : ApiRepository {
             .build()
 
         Retrofit.Builder()
-            // localhost works for both emulator & physical devices via adb reverse tcp:5228 tcp:5228
-            .baseUrl("http://localhost:5228/")
+            // Production Railway backend URL
+            .baseUrl("https://syncchat-androidchatapp-production.up.railway.app/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

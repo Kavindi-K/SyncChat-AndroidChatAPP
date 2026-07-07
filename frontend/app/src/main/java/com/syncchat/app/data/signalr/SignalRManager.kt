@@ -35,9 +35,8 @@ class SignalRManager {
     private val RETRY_DELAYS = listOf(2000L, 4000L, 8000L, 16000L, 30000L)
 
     companion object {
-        // Use localhost. For physical devices to reach the PC, you MUST run:
-        // adb reverse tcp:5228 tcp:5228
-        private const val HUB_URL = "http://localhost:5228/hubs/chat"
+        // Production Railway backend URL
+        private const val HUB_URL = "https://syncchat-androidchatapp-production.up.railway.app/hubs/chat"
         private const val TAG = "SignalRManager"
         
         @Volatile
