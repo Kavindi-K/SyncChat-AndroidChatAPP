@@ -146,6 +146,8 @@ class SignalRManager {
             hubConnection?.stop()?.blockingAwait()
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping connection", e)
+        } finally {
+            hubConnection = null
         }
     }
     
