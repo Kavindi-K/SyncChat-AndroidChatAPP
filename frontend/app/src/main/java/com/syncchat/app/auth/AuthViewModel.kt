@@ -99,6 +99,7 @@ class AuthViewModel(
         viewModelScope.launch {
             authRepository.signOut()
             idToken = null
+            com.syncchat.app.data.signalr.SignalRManager.getInstance().stopConnection()
             _authState.value = AuthState.LoggedOut
         }
     }
