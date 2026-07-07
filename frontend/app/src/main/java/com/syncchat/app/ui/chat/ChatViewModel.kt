@@ -238,8 +238,8 @@ class ChatViewModel(
                     apiRepository.sendMessage(token, conversationId, text.trim(), null)
                 }
 
-                // 3. Delete local pending message on success (the server message will be synced down shortly)
-                database.messageDao().deleteMessageById(localId)
+                // 3. Mark local pending message as SENT (prevents UI flicker while waiting for server snapshot)
+                database.messageDao().updateMessageStatus(localId, com.syncchat.app.data.model.MessageStatus.SENT.name)
                 stopTyping()
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to send, message queued as PENDING", e)
