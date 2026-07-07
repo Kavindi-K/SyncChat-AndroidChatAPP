@@ -27,6 +27,11 @@ if (!isTestEnv)
         var credentialsJson = Environment.GetEnvironmentVariable("FIREBASE_CREDENTIALS_JSON");
         if (!string.IsNullOrEmpty(credentialsJson))
         {
+            // Write to a temporary file so other Google libraries (like FirestoreDb) can use Application Default Credentials
+            var tempFile = Path.Combine(Path.GetTempPath(), "firebase-credentials.json");
+            File.WriteAllText(tempFile, credentialsJson);
+            Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", tempFile);
+
 #pragma warning disable CS0618
             using var jsonStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(credentialsJson));
             FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromStream(jsonStream) });
