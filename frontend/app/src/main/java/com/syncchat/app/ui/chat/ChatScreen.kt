@@ -572,21 +572,14 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                 .clickable {
                                     try {
                                         val url = message.mediaUrl ?: ""
-                                        if (isVideo) {
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                                            context.startActivity(intent)
-                                        } else {
-                                            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
-                                            request.setTitle(titleText)
-                                            request.setDescription("Downloading file from SyncChat")
-                                            request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                            request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, titleText)
-                                            val downloadManager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
-                                            downloadManager.enqueue(request)
-                                            android.widget.Toast.makeText(context, "Downloading $titleText...", android.widget.Toast.LENGTH_SHORT).show()
-                                        }
+                                        val intent = android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(url)
+                                        )
+                                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
                                     } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "Cannot handle file", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 .padding(12.dp)
@@ -602,7 +595,7 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                     maxLines = 1
                                 )
                                 Text(
-                                    text = if (isVideo) "Click to play" else "Click to view",
+                                    text = if (isVideo) "Tap to play" else "Tap to open",
                                     color = Color.Gray,
                                     fontSize = 12.sp
                                 )
