@@ -39,8 +39,10 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
 import com.syncchat.app.data.api.RetrofitApiRepository
 import com.syncchat.app.auth.FirebaseAuthRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import org.json.JSONObject
@@ -80,7 +82,7 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                     val profile = RetrofitApiRepository().getUserProfile(token = idToken, uid = uid)
                     bio = profile?.bio ?: ""
                     if (profile?.photoUrl?.isNotEmpty() == true) {
-                        photoUrl = profile.photoUrl
+                        photoUrl = profile.photoUrl ?: ""
                     }
                 }
             } catch (e: Exception) {
@@ -98,7 +100,9 @@ fun ProfileScreen(onBackClick: () -> Unit) {
             // Upload to Cloudinary
             scope.launch {
                 try {
-                    val bytes = context.contentResolver.openInputStream(uri)?.readBytes() ?: return@launch
+                    val bytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.readBytes()
+                    } ?: return@launch
                     val client = OkHttpClient()
                     val requestBody = MultipartBody.Builder()
                         .setType(MultipartBody.FORM)
@@ -110,14 +114,13 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                         .url("https://api.cloudinary.com/v1_1/ddfougzkl/image/upload")
                         .post(requestBody)
                         .build()
-                    client.newCall(request).execute().use { response ->
-                        val body = response.body?.string()
-                        if (response.isSuccessful && body != null) {
-                            val url = JSONObject(body).getString("secure_url")
-                            photoUrl = url
-                        } else {
-                            Toast.makeText(context, "Photo upload failed", Toast.LENGTH_SHORT).show()
-                        }
+                    val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
+                    val body = response.body?.string()
+                    if (response.isSuccessful && body != null) {
+                        val url = JSONObject(body).getString("secure_url")
+                        photoUrl = url
+                    } else {
+                        Toast.makeText(context, "Photo upload failed", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

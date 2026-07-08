@@ -23,7 +23,7 @@ public class FirestoreUserRepository : IUserRepository
         return snapshot.Exists;
     }
 
-    public async Task UpsertUserAsync(string uid, string displayName, string email, string? photoUrl, string[]? fcmTokens)
+    public async Task UpsertUserAsync(string uid, string displayName, string email, string? photoUrl, string? bio, string[]? fcmTokens)
     {
         var docRef = _db.Collection("users").Document(uid);
         var snapshot = await docRef.GetSnapshotAsync();
@@ -42,6 +42,11 @@ public class FirestoreUserRepository : IUserRepository
         if (photoUrl != null)
         {
             data.Add("photoUrl", photoUrl);
+        }
+
+        if (bio != null)
+        {
+            data.Add("bio", bio);
         }
 
         if (!snapshot.Exists)
@@ -117,6 +122,7 @@ public class FirestoreUserRepository : IUserRepository
         var displayName = snapshot.ContainsField("displayName") ? snapshot.GetValue<string>("displayName") : string.Empty;
         var email = snapshot.ContainsField("email") ? snapshot.GetValue<string>("email") : string.Empty;
         var photoUrl = snapshot.ContainsField("photoUrl") ? snapshot.GetValue<string>("photoUrl") : string.Empty;
+        var bio = snapshot.ContainsField("bio") ? snapshot.GetValue<string>("bio") : string.Empty;
 
         var fcmTokensList = new List<string>();
         if (snapshot.ContainsField("fcmTokens"))
@@ -152,6 +158,7 @@ public class FirestoreUserRepository : IUserRepository
             DisplayName = displayName,
             Email = email,
             PhotoUrl = photoUrl,
+            Bio = bio,
             FcmTokens = fcmTokensList.ToArray(),
             CreatedAt = createdAt
         };

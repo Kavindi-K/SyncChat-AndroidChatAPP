@@ -8,6 +8,7 @@ data class UpsertProfileRequest(
     val displayName: String,
     val email: String,
     val photoUrl: String?,
+    val bio: String? = null,
     val fcmTokens: List<String> = emptyList()
 )
 

@@ -46,7 +46,7 @@ public class UsersControllerTests
         var mockRepo = new Mock<IUserRepository>();
         mockRepo.Setup(x => x.UpsertUserAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string[]>()))
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string[]>()))
             .Returns(Task.CompletedTask);
 
         var client = CreateClient(mockRepo);
@@ -71,7 +71,7 @@ public class UsersControllerTests
         // Verify repository was called with the correct uid from the token
         mockRepo.Verify(x => x.UpsertUserAsync(
             "uid-test-user", "Test User", "test@test.com",
-            It.IsAny<string>(), It.IsAny<string[]>()), Times.Once);
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string[]>()), Times.Once);
     }
 
     [Fact]
@@ -99,6 +99,6 @@ public class UsersControllerTests
         // Repository must NOT be called for invalid requests
         mockRepo.Verify(x => x.UpsertUserAsync(
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string[]>()), Times.Never);
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string[]>()), Times.Never);
     }
 }

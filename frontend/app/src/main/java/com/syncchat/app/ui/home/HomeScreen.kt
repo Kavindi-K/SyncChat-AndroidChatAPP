@@ -17,6 +17,9 @@ import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,9 +52,11 @@ fun HomeScreen(
     onProfileClick: () -> Unit,
     database: AppDatabase = AppDatabase.getDatabase(LocalContext.current)
 ) {
-    val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
-    val currentUserEmail = remember { FirebaseAuth.getInstance().currentUser?.email ?: "" }
-    val currentUserName = remember { FirebaseAuth.getInstance().currentUser?.displayName ?: "Me" }
+    val currentUser = FirebaseAuth.getInstance().currentUser
+    val currentUserId = currentUser?.uid ?: ""
+    val currentUserEmail = currentUser?.email ?: ""
+    val currentUserName = currentUser?.displayName ?: "Me"
+    val currentUserPhoto = currentUser?.photoUrl?.toString() ?: ""
 
     val homeViewModel: HomeViewModel = viewModel(
         key = currentUserId,
@@ -82,18 +87,49 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "SyncChat",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 22.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = currentUserName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Profile photo avatar
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (currentUserPhoto.isNotEmpty()) {
+                                AsyncImage(
+                                    model = currentUserPhoto,
+                                    contentDescription = "Profile Photo",
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Text(
+                                    text = (currentUserName.firstOrNull()?.uppercaseChar() ?: "?").toString(),
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "SyncChat",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = currentUserName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray
+                            )
+                        }
                     }
                 },
                 actions = {

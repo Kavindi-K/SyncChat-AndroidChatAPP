@@ -120,8 +120,8 @@ public class IntegrationTests : IAsyncLifetime
         var convRepo = scope.ServiceProvider.GetRequiredService<IConversationRepository>();
 
         // Seed users
-        await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, Array.Empty<string>());
-        await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, null, Array.Empty<string>());
 
         // Seed conversation
         var conversationId = $"test-conv-1-{Guid.NewGuid()}";
@@ -166,8 +166,8 @@ public class IntegrationTests : IAsyncLifetime
         var convRepo = scope.ServiceProvider.GetRequiredService<IConversationRepository>();
         var msgRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
 
-        await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, Array.Empty<string>());
-        await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, null, Array.Empty<string>());
 
         var conversationId = $"test-conv-2-{Guid.NewGuid()}";
         var conv = new Conversation
@@ -245,8 +245,8 @@ public class IntegrationTests : IAsyncLifetime
         var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
         var convRepo = scope.ServiceProvider.GetRequiredService<IConversationRepository>();
 
-        await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, Array.Empty<string>());
-        await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("user-a", "Alice", "alice@test.com", null, null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("user-b", "Bob", "bob@test.com", null, null, Array.Empty<string>());
 
         var conversationId = $"test-conv-rate-{Guid.NewGuid()}";
         var conv = new Conversation
@@ -368,7 +368,7 @@ public class IntegrationTests : IAsyncLifetime
         var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
 
         // Pre-create user Alice
-        await userRepo.UpsertUserAsync("alice-uid", "Alice", "alice@test.com", null, Array.Empty<string>());
+        await userRepo.UpsertUserAsync("alice-uid", "Alice", "alice@test.com", null, null, Array.Empty<string>());
 
         var client = CreateAuthenticatedClient("alice-uid", "alice@test.com", "Alice");
         var payload = new { token = "new-fcm-token-12345" };

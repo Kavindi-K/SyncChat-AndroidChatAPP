@@ -98,14 +98,39 @@ class RetrofitApiRepository : ApiRepository {
         bio: String,
         photoUrl: String
     ) {
-        // Re-use upsertProfile which updates the profile on the backend
-        service.upsertProfile(
-            bearerToken = "Bearer $idToken",
-            request = UpsertProfileRequest(
-                displayName = displayName,
-                email = FirebaseAuth.getInstance().currentUser?.email ?: "",
-                photoUrl = photoUrl.ifEmpty { null }
+        val email = FirebaseAuth.getInstance().currentUser?.email ?: ""
+        // Update via backend API
+        try {
+            service.upsertProfile(
+                bearerToken = "Bearer $idToken",
+                request = UpsertProfileRequest(
+                    displayName = displayName,
+                    email = email,
+                    photoUrl = photoUrl.ifEmpty { null },
+                    bio = bio.ifEmpty { null }
+                )
             )
-        )
+        } catch (e: Exception) {
+            android.util.Log.w("RetrofitApiRepository", "Backend profile update failed, falling back to Firestore: ${e.message}")
+        }
+
+        // Always also save to Firestore directly so bio + photoUrl persist even if backend is slow
+        try {
+            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            val data = hashMapOf<String, Any>(
+                "displayName" to displayName,
+                "email" to email,
+                "bio" to bio,
+                "photoUrl" to photoUrl
+            )
+            db.collection("users").document(uid)
+                .set(data, com.google.firebase.firestore.SetOptions.merge())
+                .addOnFailureListener { e ->
+                    android.util.Log.e("RetrofitApiRepository", "Firestore update failed: ${e.message}")
+                }
+        } catch (e: Exception) {
+            android.util.Log.e("RetrofitApiRepository", "Firestore update error: ${e.message}")
+        }
     }
 }
