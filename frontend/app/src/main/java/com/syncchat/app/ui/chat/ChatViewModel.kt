@@ -41,6 +41,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MultipartBody
 import java.util.UUID
 import java.io.File
 
@@ -295,31 +296,13 @@ class ChatViewModel(
                 val fileName = fileDetails.first
                 val contentType = fileDetails.second ?: "application/octet-stream"
 
-                // 2. Request signed URL from backend
-                _uploadProgress.value = "Getting upload URL..."
-                val uploadResponse = apiRepository.getUploadUrl(token, fileName, contentType)
-
-                // 3. Read file bytes
+                // 2. Read file bytes
                 _uploadProgress.value = "Reading file..."
                 val fileBytes = readFileBytes(context, uri)
 
-                // 4. PUT file directly to GCS via the signed URL
+                // 3. Upload directly to Cloudinary
                 _uploadProgress.value = "Uploading file..."
-                val requestBody = fileBytes.toRequestBody(contentType.toMediaTypeOrNull())
-                val request = Request.Builder()
-                    .url(uploadResponse.uploadUrl)
-                    .put(requestBody)
-                    .build()
-
-                val response = withContext(ioDispatcher) {
-                    okHttpClient.newCall(request).execute()
-                }
-
-                if (!response.isSuccessful) {
-                    response.close()
-                    throw Exception("GCS Upload failed with status code ${response.code}")
-                }
-                response.close()
+                val secureUrl = uploadToCloudinary(fileBytes, fileName)
 
                 // 5. Send message with the public mediaUrl and dynamic type placeholder
                 _uploadProgress.value = "Finalizing message..."
@@ -328,7 +311,7 @@ class ChatViewModel(
                     contentType.startsWith("video/") -> "[Video]"
                     else -> "[File] $fileName"
                 }
-                apiRepository.sendMessage(token, conversationId, displayText, uploadResponse.downloadUrl)
+                apiRepository.sendMessage(token, conversationId, displayText, secureUrl)
 
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Image send failed", e)
@@ -348,37 +331,18 @@ class ChatViewModel(
                 val token = authRepository.getIdToken() ?: return@launch
 
                 val fileName = file.name
-                val contentType = "audio/mp4"
 
-                // 1. Request signed URL from backend
-                _uploadProgress.value = "Getting upload URL..."
-                val uploadResponse = apiRepository.getUploadUrl(token, fileName, contentType)
-
-                // 2. Read file bytes
+                // 1. Read file bytes
                 _uploadProgress.value = "Reading file..."
                 val fileBytes = withContext(ioDispatcher) { file.readBytes() }
 
-                // 3. PUT file directly to GCS via the signed URL
+                // 2. Upload directly to Cloudinary
                 _uploadProgress.value = "Uploading file..."
-                val requestBody = fileBytes.toRequestBody(contentType.toMediaTypeOrNull())
-                val request = Request.Builder()
-                    .url(uploadResponse.uploadUrl)
-                    .put(requestBody)
-                    .build()
+                val secureUrl = uploadToCloudinary(fileBytes, fileName)
 
-                val response = withContext(ioDispatcher) {
-                    okHttpClient.newCall(request).execute()
-                }
-
-                if (!response.isSuccessful) {
-                    response.close()
-                    throw Exception("GCS Upload failed with status code ${response.code}")
-                }
-                response.close()
-
-                // 4. Send message with the public mediaUrl and voice message placeholder
+                // 3. Send message with the public mediaUrl and voice message placeholder
                 _uploadProgress.value = "Finalizing message..."
-                apiRepository.sendMessage(token, conversationId, "[Voice Message]", uploadResponse.downloadUrl)
+                apiRepository.sendMessage(token, conversationId, "[Voice Message]", secureUrl)
 
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Voice message send failed", e)
@@ -389,6 +353,34 @@ class ChatViewModel(
                 // Clean up the temporary file after upload
                 file.delete()
             }
+        }
+    }
+
+    private suspend fun uploadToCloudinary(fileBytes: ByteArray, fileName: String): String {
+        return withContext(ioDispatcher) {
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", fileName, fileBytes.toRequestBody("application/octet-stream".toMediaTypeOrNull()))
+                .addFormDataPart("upload_preset", "syncchat_preset")
+                .build()
+
+            val request = Request.Builder()
+                .url("https://api.cloudinary.com/v1_1/ddfougzkl/auto/upload")
+                .post(requestBody)
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: ""
+                response.close()
+                throw Exception("Cloudinary Upload failed: ${response.code} $errorBody")
+            }
+
+            val responseBody = response.body?.string() ?: throw Exception("Empty response from Cloudinary")
+            response.close()
+            
+            val jsonObject = org.json.JSONObject(responseBody)
+            jsonObject.getString("secure_url")
         }
     }
 
