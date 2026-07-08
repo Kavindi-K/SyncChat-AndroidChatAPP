@@ -517,15 +517,43 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                 // If contains media
                 if (!message.mediaUrl.isNullOrEmpty()) {
                     if (message.text == "[Image]") {
+                        var showFullScreenImage by remember { mutableStateOf(false) }
+                        
                         AsyncImage(
                             model = message.mediaUrl,
                             contentDescription = "Shared Image",
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(max = 200.dp)
-                                .clip(RoundedCornerShape(8.dp)),
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showFullScreenImage = true },
                             contentScale = ContentScale.Crop
                         )
+                        
+                        if (showFullScreenImage) {
+                            androidx.compose.ui.window.Dialog(
+                                onDismissRequest = { showFullScreenImage = false },
+                                properties = androidx.compose.ui.window.DialogProperties(
+                                    usePlatformDefaultWidth = false,
+                                    dismissOnBackPress = true,
+                                    dismissOnClickOutside = true
+                                )
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black)
+                                        .clickable { showFullScreenImage = false },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = message.mediaUrl,
+                                        contentDescription = "Full Screen Image",
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
                     } else if (message.text == "[Voice Message]") {
                         InlineAudioPlayer(url = message.mediaUrl ?: "")
                     } else {
@@ -545,10 +573,14 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                 .background(Color(0xFF1E1E2E))
                                 .clickable {
                                     try {
-                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(message.mediaUrl))
+                                        var urlToOpen = message.mediaUrl ?: ""
+                                        if (urlToOpen.lowercase().endsWith(".pdf")) {
+                                            urlToOpen = "https://docs.google.com/gview?embedded=true&url=" + java.net.URLEncoder.encode(urlToOpen, "UTF-8")
+                                        }
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(urlToOpen))
                                         context.startActivity(intent)
                                     } catch (e: Exception) {
-                                        // Ignore
+                                        android.widget.Toast.makeText(context, "Cannot open file: no app found", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 .padding(12.dp)
