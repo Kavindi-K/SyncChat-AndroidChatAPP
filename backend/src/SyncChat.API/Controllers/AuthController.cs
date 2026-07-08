@@ -53,6 +53,7 @@ public class AuthController : ControllerBase
                 request.DisplayName,
                 request.Email,
                 string.Empty,
+                string.Empty,
                 Array.Empty<string>()
             );
 

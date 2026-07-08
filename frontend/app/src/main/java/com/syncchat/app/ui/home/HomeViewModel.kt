@@ -71,6 +71,27 @@ class HomeViewModel(
                     }
                 }
             }
+
+            // Listen to real-time presence changes
+            viewModelScope.launch {
+                com.syncchat.app.data.signalr.SignalRManager.getInstance().presenceEvents.collect { (userId, isOnline) ->
+                    // Update user profiles map
+                    val currentProfiles = _userProfiles.value.toMutableMap()
+                    val profile = currentProfiles[userId]
+                    if (profile != null) {
+                        currentProfiles[userId] = profile.copy(isOnline = isOnline)
+                        _userProfiles.value = currentProfiles
+                    }
+
+                    // Update search results list if any matches
+                    val currentResults = _searchResults.value.toMutableList()
+                    val index = currentResults.indexOfFirst { it.uid == userId }
+                    if (index != -1) {
+                        currentResults[index] = currentResults[index].copy(isOnline = isOnline)
+                        _searchResults.value = currentResults
+                    }
+                }
+            }
         }
     }
 
@@ -150,7 +171,8 @@ class HomeViewModel(
                             uid = doc.id,
                             displayName = doc.getString("displayName") ?: "",
                             email = doc.getString("email") ?: "",
-                            photoUrl = doc.getString("photoUrl")
+                            photoUrl = doc.getString("photoUrl"),
+                            isOnline = doc.getBoolean("isOnline") ?: false
                         )
                     }
                 } catch (e: Exception) {
@@ -230,7 +252,8 @@ class HomeViewModel(
                                 uid = uid,
                                 displayName = doc.getString("displayName") ?: "",
                                 email = doc.getString("email") ?: "",
-                                photoUrl = doc.getString("photoUrl")
+                                photoUrl = doc.getString("photoUrl"),
+                                isOnline = doc.getBoolean("isOnline") ?: false
                             )
                         )
                     }

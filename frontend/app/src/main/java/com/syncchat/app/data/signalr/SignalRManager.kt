@@ -13,6 +13,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -29,6 +32,9 @@ class SignalRManager {
     
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.Disconnected)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
+
+    private val _presenceEvents = MutableSharedFlow<Pair<String, Boolean>>(extraBufferCapacity = 64)
+    val presenceEvents: SharedFlow<Pair<String, Boolean>> = _presenceEvents.asSharedFlow()
 
     private var retryCount = 0
     private val MAX_RETRIES = 5
@@ -81,6 +87,13 @@ class SignalRManager {
                 }
             })
             .build()
+
+        hubConnection?.on("UserPresenceChanged", { userId: String, isOnline: Boolean ->
+            Log.d(TAG, "Presence changed: User $userId isOnline=$isOnline")
+            scope.launch {
+                _presenceEvents.emit(Pair(userId, isOnline))
+            }
+        }, String::class.java, java.lang.Boolean::class.java)
 
         hubConnection?.onClosed { exception ->
             Log.w(TAG, "Connection closed. Exception: \${exception?.message}")

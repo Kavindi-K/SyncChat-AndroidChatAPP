@@ -48,6 +48,8 @@ import java.io.File
 class ChatViewModel(
     private val conversationId: String,
     private val currentUserId: String,
+    val recipientUserId: String = "",
+    initialRecipient: com.syncchat.app.data.model.UserProfile = com.syncchat.app.data.model.UserProfile(),
     private val apiRepository: ApiRepository = RetrofitApiRepository(),
     private val authRepository: AuthRepository = FirebaseAuthRepository(),
     private val database: AppDatabase,
@@ -56,6 +58,11 @@ class ChatViewModel(
 ) : ViewModel() {
 
     private val firestore = FirebaseFirestore.getInstance()
+
+    private val _recipientUser = MutableStateFlow<com.syncchat.app.data.model.UserProfile>(initialRecipient)
+    val recipientUser: StateFlow<com.syncchat.app.data.model.UserProfile> = _recipientUser.asStateFlow()
+
+    private var recipientListener: ListenerRegistration? = null
 
     // UI state flow powered by Room database flow (instant update)
     val messages: StateFlow<List<Message>> = database.messageDao().getMessagesForConversationFlow(conversationId)
@@ -95,6 +102,40 @@ class ChatViewModel(
         listenToMessages()
         setupSignalRListeners()
         scheduleMessageSync()
+        listenToRecipientProfile()
+        listenToRecipientPresence()
+    }
+
+    private fun listenToRecipientProfile() {
+        if (recipientUserId.isEmpty()) return
+        recipientListener = firestore.collection("users").document(recipientUserId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("ChatViewModel", "Recipient listen failed.", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    _recipientUser.value = com.syncchat.app.data.model.UserProfile(
+                        uid = snapshot.id,
+                        displayName = snapshot.getString("displayName") ?: "",
+                        email = snapshot.getString("email") ?: "",
+                        photoUrl = snapshot.getString("photoUrl"),
+                        bio = snapshot.getString("bio"),
+                        isOnline = snapshot.getBoolean("isOnline") ?: _recipientUser.value.isOnline
+                    )
+                }
+            }
+    }
+
+    private fun listenToRecipientPresence() {
+        if (recipientUserId.isEmpty()) return
+        viewModelScope.launch {
+            com.syncchat.app.data.signalr.SignalRManager.getInstance().presenceEvents.collect { (userId, isOnline) ->
+                if (userId == recipientUserId) {
+                    _recipientUser.update { it.copy(isOnline = isOnline) }
+                }
+            }
+        }
     }
 
     private fun setupSignalRListeners() {
@@ -453,5 +494,6 @@ class ChatViewModel(
     override fun onCleared() {
         super.onCleared()
         listenerRegistration?.remove()
+        recipientListener?.remove()
     }
 }

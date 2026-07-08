@@ -77,6 +77,7 @@ public class UsersController : ControllerBase
                 request.DisplayName,
                 request.Email,
                 request.PhotoUrl ?? string.Empty,
+                request.Bio ?? string.Empty,
                 null); // Ignore FCM tokens in profile sync to prevent overwriting registered tokens
 
             return Ok(new { Success = true, Message = "Profile updated successfully" });
@@ -121,6 +122,7 @@ public record UpsertProfileRequest(
     string DisplayName,
     string Email,
     string? PhotoUrl,
+    string? Bio,
     string[]? FcmTokens);
 
 public record FcmTokenRequest(string Token);
