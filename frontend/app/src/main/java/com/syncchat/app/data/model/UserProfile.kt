@@ -7,5 +7,6 @@ data class UserProfile(
     val displayName: String = "",
     val email: String = "",
     val photoUrl: String? = null,
+    val bio: String? = null,
     val createdAt: Date = Date()
 )

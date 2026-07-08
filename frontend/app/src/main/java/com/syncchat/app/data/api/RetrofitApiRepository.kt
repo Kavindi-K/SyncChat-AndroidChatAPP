@@ -1,5 +1,6 @@
 package com.syncchat.app.data.api
 
+import com.google.firebase.auth.FirebaseAuth
 import com.syncchat.app.data.model.Conversation
 import com.syncchat.app.data.model.UserProfile
 import okhttp3.OkHttpClient
@@ -89,5 +90,22 @@ class RetrofitApiRepository : ApiRepository {
 
     override suspend fun registerFcmToken(token: String, fcmToken: String) {
         service.registerFcmToken("Bearer $token", FcmTokenRequestDto(fcmToken))
+    }
+
+    override suspend fun updateUserProfile(
+        idToken: String,
+        displayName: String,
+        bio: String,
+        photoUrl: String
+    ) {
+        // Re-use upsertProfile which updates the profile on the backend
+        service.upsertProfile(
+            bearerToken = "Bearer $idToken",
+            request = UpsertProfileRequest(
+                displayName = displayName,
+                email = FirebaseAuth.getInstance().currentUser?.email ?: "",
+                photoUrl = photoUrl.ifEmpty { null }
+            )
+        )
     }
 }

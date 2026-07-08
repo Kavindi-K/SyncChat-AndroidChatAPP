@@ -571,14 +571,22 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                 .background(Color(0xFF1E1E2E))
                                 .clickable {
                                     try {
-                                        var urlToOpen = message.mediaUrl ?: ""
-                                        if (urlToOpen.lowercase().endsWith(".pdf")) {
-                                            urlToOpen = "https://docs.google.com/gview?embedded=true&url=" + java.net.URLEncoder.encode(urlToOpen, "UTF-8")
+                                        val url = message.mediaUrl ?: ""
+                                        if (isVideo) {
+                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                            context.startActivity(intent)
+                                        } else {
+                                            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+                                            request.setTitle(titleText)
+                                            request.setDescription("Downloading file from SyncChat")
+                                            request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                            request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, titleText)
+                                            val downloadManager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                                            downloadManager.enqueue(request)
+                                            android.widget.Toast.makeText(context, "Downloading $titleText...", android.widget.Toast.LENGTH_SHORT).show()
                                         }
-                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(urlToOpen))
-                                        context.startActivity(intent)
                                     } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "Cannot open file: no app found", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, "Cannot handle file", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 .padding(12.dp)
