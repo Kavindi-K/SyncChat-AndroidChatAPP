@@ -92,9 +92,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Retrieve and upload FCM token when logged in
                 LaunchedEffect(authState) {
                     if (authState is AuthState.LoggedIn) {
+                        com.syncchat.app.data.signalr.SignalRManager.getInstance().startConnection()
                         try {
                             com.google.firebase.messaging.FirebaseMessaging.getInstance().token
                                 .addOnCompleteListener { task ->

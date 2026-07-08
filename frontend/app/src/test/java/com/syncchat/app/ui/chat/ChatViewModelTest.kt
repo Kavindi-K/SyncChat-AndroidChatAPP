@@ -462,21 +462,22 @@ class ChatViewModelTest {
 
         coEvery { mockAuthRepository.getIdToken() } returns "fake-token"
 
-        val mockUploadResponse = com.syncchat.app.data.api.UploadResponse(
-            uploadUrl = "https://gcs-upload-url.com/dummy",
-            downloadUrl = "https://gcs-download-url.com/dummy.png"
-        )
-        coEvery { mockApiRepo.getUploadUrl("fake-token", "photo.png", "image/png") } returns mockUploadResponse
-
         mockkConstructor(okhttp3.OkHttpClient::class)
         val mockCall = mockk<okhttp3.Call>(relaxed = true)
         val mockResponse = mockk<okhttp3.Response>(relaxed = true)
+        val mockResponseBody = mockk<okhttp3.ResponseBody>(relaxed = true)
         
         every { mockResponse.isSuccessful } returns true
         every { mockResponse.code } returns 200
+        every { mockResponseBody.string() } returns "{\"secure_url\": \"https://cloudinary-download-url.com/dummy.png\"}"
+        every { mockResponse.body } returns mockResponseBody
         
         every { anyConstructed<okhttp3.OkHttpClient>().newCall(any()) } returns mockCall
         every { mockCall.execute() } returns mockResponse
+
+        // Mock JSONObject to prevent Android Stub runtime crash on JVM
+        mockkConstructor(org.json.JSONObject::class)
+        every { anyConstructed<org.json.JSONObject>().getString("secure_url") } returns "https://cloudinary-download-url.com/dummy.png"
 
         val viewModel = ChatViewModel(
             conversationId = "conv-1",
@@ -492,8 +493,7 @@ class ChatViewModelTest {
         advanceUntilIdle()
 
         // Assert
-        coVerify(exactly = 1) { mockApiRepo.getUploadUrl("fake-token", "photo.png", "image/png") }
-        coVerify(exactly = 1) { mockApiRepo.sendMessage("fake-token", "conv-1", "[Image]", "https://gcs-download-url.com/dummy.png") }
+        coVerify(exactly = 1) { mockApiRepo.sendMessage("fake-token", "conv-1", "[Image]", "https://cloudinary-download-url.com/dummy.png") }
     }
 
     @Test
@@ -515,21 +515,22 @@ class ChatViewModelTest {
 
         coEvery { mockAuthRepository.getIdToken() } returns "fake-token"
 
-        val mockUploadResponse = com.syncchat.app.data.api.UploadResponse(
-            uploadUrl = "https://gcs-upload-url.com/dummy",
-            downloadUrl = "https://gcs-download-url.com/dummy.png"
-        )
-        coEvery { mockApiRepo.getUploadUrl("fake-token", "photo.png", "image/png") } returns mockUploadResponse
-
         mockkConstructor(okhttp3.OkHttpClient::class)
         val mockCall = mockk<okhttp3.Call>(relaxed = true)
         val mockResponse = mockk<okhttp3.Response>(relaxed = true)
+        val mockResponseBody = mockk<okhttp3.ResponseBody>(relaxed = true)
         
         every { mockResponse.isSuccessful } returns true
         every { mockResponse.code } returns 200
+        every { mockResponseBody.string() } returns "{\"secure_url\": \"https://cloudinary-download-url.com/dummy.png\"}"
+        every { mockResponse.body } returns mockResponseBody
         
         every { anyConstructed<okhttp3.OkHttpClient>().newCall(any()) } returns mockCall
         every { mockCall.execute() } returns mockResponse
+
+        // Mock JSONObject to prevent Android Stub runtime crash on JVM
+        mockkConstructor(org.json.JSONObject::class)
+        every { anyConstructed<org.json.JSONObject>().getString("secure_url") } returns "https://cloudinary-download-url.com/dummy.png"
 
         val viewModel = ChatViewModel(
             conversationId = "conv-1",
@@ -555,7 +556,6 @@ class ChatViewModelTest {
         
         // Assert sequence
         org.junit.Assert.assertTrue(progressValues.contains("Preparing upload..."))
-        org.junit.Assert.assertTrue(progressValues.contains("Getting upload URL..."))
         org.junit.Assert.assertTrue(progressValues.contains("Reading file..."))
         org.junit.Assert.assertTrue(progressValues.contains("Uploading file..."))
         org.junit.Assert.assertTrue(progressValues.contains("Finalizing message..."))

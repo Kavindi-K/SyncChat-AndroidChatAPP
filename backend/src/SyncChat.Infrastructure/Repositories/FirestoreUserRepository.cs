@@ -123,6 +123,7 @@ public class FirestoreUserRepository : IUserRepository
         var email = snapshot.ContainsField("email") ? snapshot.GetValue<string>("email") : string.Empty;
         var photoUrl = snapshot.ContainsField("photoUrl") ? snapshot.GetValue<string>("photoUrl") : string.Empty;
         var bio = snapshot.ContainsField("bio") ? snapshot.GetValue<string>("bio") : string.Empty;
+        var isOnline = snapshot.ContainsField("isOnline") && snapshot.GetValue<bool>("isOnline");
 
         var fcmTokensList = new List<string>();
         if (snapshot.ContainsField("fcmTokens"))
@@ -159,6 +160,7 @@ public class FirestoreUserRepository : IUserRepository
             Email = email,
             PhotoUrl = photoUrl,
             Bio = bio,
+            IsOnline = isOnline,
             FcmTokens = fcmTokensList.ToArray(),
             CreatedAt = createdAt
         };
@@ -257,4 +259,12 @@ public class FirestoreUserRepository : IUserRepository
                 SetOptions.MergeAll);
         }
     }
+
+    public async Task UpdateUserPresenceAsync(string uid, bool isOnline)
+    {
+        if (string.IsNullOrWhiteSpace(uid)) return;
+        var docRef = _db.Collection("users").Document(uid);
+        await docRef.SetAsync(new Dictionary<string, object> { { "isOnline", isOnline } }, SetOptions.MergeAll);
+    }
 }
+

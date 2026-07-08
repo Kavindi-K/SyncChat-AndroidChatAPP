@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -68,13 +69,20 @@ fun ChatScreen(
     val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
     val database = remember { com.syncchat.app.data.local.AppDatabase.getDatabase(context) }
 
-    // Inject ChatViewModel with conversationId, currentUserId and Room Database
+    // Inject ChatViewModel with conversationId, currentUserId, recipientUserId, initialRecipient and Room Database
     val chatViewModel: ChatViewModel = viewModel(
         key = "${conversationId}_${currentUserId}",
         factory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return ChatViewModel(conversationId = conversationId, currentUserId = currentUserId, database = database, context = context.applicationContext) as T
+                return ChatViewModel(
+                    conversationId = conversationId,
+                    currentUserId = currentUserId,
+                    recipientUserId = otherUser.uid,
+                    initialRecipient = otherUser,
+                    database = database,
+                    context = context.applicationContext
+                ) as T
             }
         }
     )
@@ -84,6 +92,7 @@ fun ChatScreen(
     val uploadProgress by chatViewModel.uploadProgress.collectAsState()
     val typingUsers by chatViewModel.typingUsers.collectAsState()
     val errorMessage by chatViewModel.errorMessage.collectAsState()
+    val liveOtherUser by chatViewModel.recipientUser.collectAsState()
 
     var textInput by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -156,38 +165,50 @@ fun ChatScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // User Avatar
-                        val initials = if (otherUser.displayName.isNotEmpty()) {
-                            otherUser.displayName.split(" ")
+                        val initials = if (liveOtherUser.displayName.isNotEmpty()) {
+                            liveOtherUser.displayName.split(" ")
                                 .mapNotNull { it.firstOrNull() }
                                 .take(2)
                                 .joinToString("")
                                 .uppercase()
                         } else "?"
 
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                        Box {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!liveOtherUser.photoUrl.isNullOrEmpty()) {
+                                    AsyncImage(
+                                        model = liveOtherUser.photoUrl,
+                                        contentDescription = "Profile Photo",
+                                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                        contentScale = ContentScale.Crop
                                     )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (!otherUser.photoUrl.isNullOrEmpty()) {
-                                AsyncImage(
-                                    model = otherUser.photoUrl,
-                                    contentDescription = "Profile Photo",
-                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Text(
-                                    text = initials,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
+                                } else {
+                                    Text(
+                                        text = initials,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                            if (liveOtherUser.isOnline) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(11.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF4CAF50))
+                                        .align(Alignment.BottomEnd)
+                                        .border(1.5.dp, Color(0xFF0F0F1A), CircleShape)
                                 )
                             }
                         }
@@ -196,10 +217,16 @@ fun ChatScreen(
 
                         Column {
                             Text(
-                                text = otherUser.displayName,
+                                text = liveOtherUser.displayName,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = Color.White
+                            )
+                            Text(
+                                text = if (liveOtherUser.isOnline) "Active now" else "Offline",
+                                fontSize = 11.sp,
+                                color = if (liveOtherUser.isOnline) Color(0xFF4CAF50) else Color.Gray,
+                                fontWeight = FontWeight.Normal
                             )
                         }
                     }

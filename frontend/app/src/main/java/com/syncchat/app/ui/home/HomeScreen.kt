@@ -2,6 +2,7 @@ package com.syncchat.app.ui.home
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -423,23 +424,44 @@ fun ConversationItem(
                 .uppercase()
         } else "?"
 
-        Box(
-            modifier = Modifier
-                .size(52.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+        Box {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!otherProfile.photoUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = otherProfile.photoUrl,
+                        contentDescription = "Profile Photo",
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                        contentScale = ContentScale.Crop
                     )
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initials,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+                } else {
+                    Text(
+                        text = initials,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+            }
+            if (otherProfile.isOnline) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF4CAF50))
+                        .align(Alignment.BottomEnd)
+                        .border(1.5.dp, Color(0xFF0F0F1A), CircleShape)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(16.dp))
@@ -519,19 +541,40 @@ fun UserSearchResultItem(
                 .uppercase()
         } else "?"
 
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(Color(0xFF6C63FF)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initials,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
+        Box {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF6C63FF)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!user.photoUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = user.photoUrl,
+                        contentDescription = "Profile Photo",
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(
+                        text = initials,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+            if (user.isOnline) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF4CAF50))
+                        .align(Alignment.BottomEnd)
+                        .border(1.5.dp, Color(0xFF2E2E3E), CircleShape)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))

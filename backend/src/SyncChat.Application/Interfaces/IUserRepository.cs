@@ -10,6 +10,7 @@ public interface IUserRepository
     Task UpsertUserAsync(string uid, string displayName, string email, string? photoUrl, string? bio, string[]? fcmTokens);
     Task<UserProfile?> GetUserByIdAsync(string uid);
     Task<List<UserProfile>> SearchUsersAsync(string query);
+    Task UpdateUserPresenceAsync(string uid, bool isOnline);
 
     /// <summary>Atomically adds a token to the user's fcmTokens array (deduped, max 5 tokens kept).</summary>
     Task StoreFcmTokenAsync(string uid, string token);

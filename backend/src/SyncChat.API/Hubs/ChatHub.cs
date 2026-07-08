@@ -42,7 +42,20 @@ public class ChatHub : Hub
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, userId);
+        await _userRepository.UpdateUserPresenceAsync(userId, true);
+        await Clients.All.SendAsync("UserPresenceChanged", userId, true);
         await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        var userId = GetCurrentUserId();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            await _userRepository.UpdateUserPresenceAsync(userId, false);
+            await Clients.All.SendAsync("UserPresenceChanged", userId, false);
+        }
+        await base.OnDisconnectedAsync(exception);
     }
 
     public async Task SendMessage(string conversationId, string text)
