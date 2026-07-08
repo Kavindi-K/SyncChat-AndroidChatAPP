@@ -12,14 +12,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.syncchat.app.auth.AuthState
 import com.syncchat.app.auth.AuthViewModel
 import com.syncchat.app.auth.FirebaseAuthRepository
@@ -186,7 +180,6 @@ class MainActivity : ComponentActivity() {
                             LoginScreen(
                                 viewModel = authViewModel,
                                 onLoginSuccess = { },
-                                onGoogleSignIn = { launchGoogleSignIn() },
                                 onNavigateToRegister = {
                                     authViewModel.resetState()
                                     showRegister = true
@@ -281,32 +274,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun launchGoogleSignIn() {
-        val credentialManager = CredentialManager.create(this)
-
-        val googleIdOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(getString(R.string.default_web_client_id))
-            .setAutoSelectEnabled(false)
-            .build()
-
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
-            .build()
-
-        lifecycleScope.launch {
-            try {
-                val result = credentialManager.getCredential(this@MainActivity, request)
-                val credential = result.credential
-                if (credential is CustomCredential &&
-                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) {
-                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                    authViewModel.signInWithGoogle(googleIdTokenCredential.idToken)
-                }
-            } catch (e: GetCredentialException) {
-                Log.e("MainActivity", "Google Sign-In failed: ${e.message}")
-            }
-        }
-    }
-}
+}

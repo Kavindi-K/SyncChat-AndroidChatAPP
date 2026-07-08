@@ -80,20 +80,6 @@ class AuthViewModel(
         }
     }
 
-    fun signInWithGoogle(googleIdToken: String) {
-        viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            try {
-                idToken = authRepository.signInWithGoogle(googleIdToken)
-                syncProfileToBackend(idToken!!)
-                _authState.value = AuthState.LoggedIn(idToken!!)
-            } catch (e: AuthException.NetworkError) {
-                _authState.value = AuthState.Error(e.message ?: "Network error")
-            } catch (e: AuthException) {
-                _authState.value = AuthState.Error(e.message ?: "Google sign in failed")
-            }
-        }
-    }
 
     fun signOut() {
         viewModelScope.launch {

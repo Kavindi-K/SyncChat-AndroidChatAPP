@@ -38,7 +38,6 @@ class ComposeUiTest {
             LoginScreen(
                 viewModel = mockAuthViewModel,
                 onLoginSuccess = {},
-                onGoogleSignIn = {},
                 onNavigateToRegister = {}
             )
         }

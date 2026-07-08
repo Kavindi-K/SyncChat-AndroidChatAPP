@@ -76,15 +76,11 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.messaging)
-    implementation(libs.play.services.auth)
+
 
     // Image loading
     implementation(libs.coil.compose)
 
-    // Google Sign-In via Credential Manager
-    implementation(libs.androidx.credentials)
-    implementation(libs.androidx.credentials.play.services.auth)
-    implementation(libs.googleid)
 
     // Retrofit + OkHttp for backend API
     implementation(libs.retrofit)

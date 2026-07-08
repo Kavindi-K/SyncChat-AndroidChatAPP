@@ -3,7 +3,6 @@ package com.syncchat.app.auth
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
-import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.tasks.await
 import java.io.IOException
@@ -49,21 +48,6 @@ class FirebaseAuthRepository : AuthRepository {
             throw e
         } catch (e: Exception) {
             throw AuthException.Unknown(e.message ?: "Registration failed")
-        }
-    }
-
-    override suspend fun signInWithGoogle(googleIdToken: String): String {
-        return try {
-            val credential = GoogleAuthProvider.getCredential(googleIdToken, null)
-            val result = firebaseAuth.signInWithCredential(credential).await()
-            result.user?.getIdToken(false)?.await()?.token
-                ?: throw AuthException.Unknown("Failed to retrieve ID token")
-        } catch (e: IOException) {
-            throw AuthException.NetworkError()
-        } catch (e: AuthException) {
-            throw e
-        } catch (e: Exception) {
-            throw AuthException.Unknown(e.message ?: "Google sign in failed")
         }
     }
 

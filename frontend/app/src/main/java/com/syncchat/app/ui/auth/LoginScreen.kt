@@ -16,7 +16,6 @@ import com.syncchat.app.auth.AuthViewModel
 fun LoginScreen(
     viewModel: AuthViewModel,
     onLoginSuccess: () -> Unit,
-    onGoogleSignIn: () -> Unit,
     onNavigateToRegister: () -> Unit
 ) {
     val authState by viewModel.authState.collectAsState()
@@ -99,16 +98,6 @@ fun LoginScreen(
             } else {
                 Text("Sign In")
             }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onGoogleSignIn,
-            enabled = authState !is AuthState.Loading,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Sign in with Google")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
