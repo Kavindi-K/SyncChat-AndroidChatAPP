@@ -429,10 +429,19 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                 .background(Color(0xFF1E1E2E))
                                 .clickable {
                                     try {
-                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(message.mediaUrl))
-                                        context.startActivity(intent)
+                                        val urlToDownload = message.mediaUrl ?: ""
+                                        val request = android.app.DownloadManager.Request(android.net.Uri.parse(urlToDownload))
+                                        request.setTitle(titleText)
+                                        request.setDescription("Downloading file from SyncChat")
+                                        request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                        request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, titleText)
+                                        
+                                        val manager = context.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                                        manager.enqueue(request)
+                                        
+                                        android.widget.Toast.makeText(context, "Downloading file...", android.widget.Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
-                                        // Ignore
+                                        android.widget.Toast.makeText(context, "Cannot download file", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 .padding(12.dp)
@@ -459,7 +468,7 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                 }
 
                 val isMediaMessage = !message.mediaUrl.isNullOrEmpty()
-                if (message.text.isNotEmpty() && (!isMediaMessage || (!message.text.startsWith("[Image]") && !message.text.startsWith("[Video]") && !message.text.startsWith("[File]")))) {
+                if (message.text.isNotEmpty() && (!isMediaMessage || (!message.text.startsWith("[Image]") && !message.text.startsWith("[Video]") && !message.text.startsWith("[File]") && !message.text.startsWith("[Voice Message]")))) {
                     Text(
                         text = message.text,
                         color = Color.White,
