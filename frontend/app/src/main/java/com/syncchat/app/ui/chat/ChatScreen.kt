@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -525,6 +526,8 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                 .clip(RoundedCornerShape(8.dp)),
                             contentScale = ContentScale.Crop
                         )
+                    } else if (message.text == "[Voice Message]") {
+                        InlineAudioPlayer(url = message.mediaUrl ?: "")
                     } else {
                         // Render file/video attachment card
                         val isVideo = message.text == "[Video]"
@@ -572,7 +575,7 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                 }
 
                 val isMediaMessage = !message.mediaUrl.isNullOrEmpty()
-                if (message.text.isNotEmpty() && (!isMediaMessage || (!message.text.startsWith("[Image]") && !message.text.startsWith("[Video]") && !message.text.startsWith("[File]")))) {
+                if (message.text.isNotEmpty() && (!isMediaMessage || (!message.text.startsWith("[Image]") && !message.text.startsWith("[Video]") && !message.text.startsWith("[File]") && !message.text.startsWith("[Voice Message]")))) {
                     Text(
                         text = message.text,
                         color = Color.White,
@@ -654,6 +657,87 @@ fun TypingIndicatorBubble(name: String) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun InlineAudioPlayer(url: String) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var isPrepared by remember { mutableStateOf(false) }
+    
+    val mediaPlayer = remember { android.media.MediaPlayer() }
+
+    DisposableEffect(url) {
+        try {
+            mediaPlayer.setDataSource(url)
+            mediaPlayer.prepareAsync()
+            mediaPlayer.setOnPreparedListener {
+                isPrepared = true
+            }
+            mediaPlayer.setOnCompletionListener {
+                isPlaying = false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        
+        onDispose {
+            try {
+                mediaPlayer.release()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF1E1E2E))
+            .padding(12.dp)
+    ) {
+        IconButton(
+            onClick = {
+                if (isPrepared) {
+                    if (isPlaying) {
+                        mediaPlayer.pause()
+                        isPlaying = false
+                    } else {
+                        mediaPlayer.start()
+                        isPlaying = true
+                    }
+                }
+            },
+            enabled = isPrepared,
+            modifier = Modifier
+                .size(36.dp)
+                .background(MaterialTheme.colorScheme.primary, CircleShape)
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                tint = Color.White
+            )
+        }
+        
+        Spacer(modifier = Modifier.width(12.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Voice Message",
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = if (!isPrepared) "Loading audio..." else if (isPlaying) "Playing..." else "Ready to play",
+                color = Color.Gray,
+                fontSize = 12.sp
+            )
         }
     }
 }
