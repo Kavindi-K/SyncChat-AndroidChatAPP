@@ -73,6 +73,7 @@ class ComposeUiTest {
             HomeScreen(
                 onConversationClick = { _, _ -> },
                 onSignOut = {},
+                onProfileClick = {},
                 database = mockDb
             )
         }
@@ -96,6 +97,7 @@ class ComposeUiTest {
             HomeScreen(
                 onConversationClick = { _, _ -> },
                 onSignOut = {},
+                onProfileClick = {},
                 database = mockDb
             )
         }
