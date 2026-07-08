@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -323,71 +325,139 @@ fun ChatScreen(
                         .imePadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Attachment button
-                    IconButton(
-                        onClick = { imagePickerLauncher.launch("*/*") },
-                        enabled = !isSending
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Send File",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                    if (isRecording) {
+                        // STATE 1: RECORDING
+                        val transition = rememberInfiniteTransition(label = "pulse")
+                        val alpha by transition.animateFloat(
+                            initialValue = 0.3f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(800),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "alpha"
                         )
-                    }
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 16.dp)
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(Color.Red.copy(alpha = alpha))
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Recording audio...", color = Color.White, modifier = Modifier.weight(1f))
+                        
+                        IconButton(
+                            onClick = {
+                                isRecording = false
+                                audioRecorder.stopRecording()
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color.Red, CircleShape)
+                        ) {
+                            Icon(Icons.Default.Clear, "Stop Recording", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    } else if (voiceFile != null) {
+                        // STATE 2: RECORDED, WAITING TO SEND
+                        IconButton(
+                            onClick = {
+                                audioRecorder.cancelRecording()
+                                voiceFile = null
+                            }
+                        ) {
+                            Icon(Icons.Default.Delete, "Discard", tint = Color.Red)
+                        }
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(Color(0xFF0F0F1A))
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Mic, "Audio", tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Voice message ready", color = Color.White)
+                        }
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        IconButton(
+                            onClick = {
+                                voiceFile?.let { 
+                                    chatViewModel.sendVoiceMessage(it)
+                                    voiceFile = null
+                                }
+                            },
+                            enabled = !isSending,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(if (!isSending) MaterialTheme.colorScheme.primary else Color.DarkGray, CircleShape)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, "Send", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    } else {
+                        // STATE 3: NORMAL
+                        // Attachment button
+                        IconButton(
+                            onClick = { imagePickerLauncher.launch("*/*") },
+                            enabled = !isSending
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Send File",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
 
-                    // Text Input
-                    OutlinedTextField(
-                        value = textInput,
-                        onValueChange = { textInput = it },
-                        placeholder = { Text("Type a message...") },
-                        maxLines = 4,
-                        singleLine = false,
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Send
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (textInput.isNotBlank()) {
+                        // Text Input
+                        OutlinedTextField(
+                            value = textInput,
+                            onValueChange = { textInput = it },
+                            placeholder = { Text("Type a message...") },
+                            maxLines = 4,
+                            singleLine = false,
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (textInput.isNotBlank()) {
+                                        chatViewModel.sendMessage(textInput)
+                                        textInput = ""
+                                    }
+                                }
+                            ),
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.DarkGray,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                unfocusedContainerColor = Color(0xFF0F0F1A),
+                                focusedContainerColor = Color(0xFF0F0F1A)
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Send / Record Button
+                        val isTextEmpty = textInput.isBlank()
+                        
+                        IconButton(
+                            onClick = {
+                                if (!isTextEmpty) {
                                     chatViewModel.sendMessage(textInput)
                                     textInput = ""
-                                }
-                            }
-                        ),
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.DarkGray,
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            unfocusedContainerColor = Color(0xFF0F0F1A),
-                            focusedContainerColor = Color(0xFF0F0F1A)
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // Send / Record Button
-                    val isTextEmpty = textInput.isBlank()
-                    
-                    IconButton(
-                        onClick = {
-                            if (!isTextEmpty) {
-                                chatViewModel.sendMessage(textInput)
-                                textInput = ""
-                                keyboardController?.hide()
-                            } else {
-                                if (isRecording) {
-                                    // Stop recording and send
-                                    isRecording = false
-                                    audioRecorder.stopRecording()
-                                    voiceFile?.let { 
-                                        chatViewModel.sendVoiceMessage(it)
-                                        voiceFile = null
-                                    }
+                                    keyboardController?.hide()
                                 } else {
                                     // Check permission and start recording
                                     if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -399,22 +469,22 @@ fun ChatScreen(
                                         audioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                     }
                                 }
-                            }
-                        },
-                        enabled = !isSending,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(
-                                color = if (isRecording) Color.Red else if (!isTextEmpty) MaterialTheme.colorScheme.primary else Color.DarkGray,
-                                shape = CircleShape
+                            },
+                            enabled = !isSending,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    color = if (!isTextEmpty) MaterialTheme.colorScheme.primary else Color(0xFF2E2E3E),
+                                    shape = CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = if (!isTextEmpty) Icons.Default.PlayArrow else Icons.Default.Mic,
+                                contentDescription = if (!isTextEmpty) "Send" else "Record Voice",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
-                    ) {
-                        Icon(
-                            imageVector = if (!isTextEmpty) Icons.Default.PlayArrow else if (isRecording) Icons.Default.Clear else Icons.Default.Add,
-                            contentDescription = if (!isTextEmpty) "Send" else if (isRecording) "Stop Recording" else "Record Voice",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        }
                     }
                 }
             }
