@@ -32,6 +32,7 @@ import com.syncchat.app.ui.auth.RegisterScreen
 import com.syncchat.app.ui.auth.SplashScreen
 import com.syncchat.app.ui.chat.ChatScreen
 import com.syncchat.app.ui.home.HomeScreen
+import com.syncchat.app.ui.profile.ProfileScreen
 import com.syncchat.app.ui.theme.SyncChatTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
     // Exposed at class level so they can be set from deep link intents
     private var activeConversationId by mutableStateOf<String?>(null)
     private var activeConversationUser by mutableStateOf<UserProfile?>(null)
+    private var showProfile by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,33 +133,41 @@ class MainActivity : ComponentActivity() {
                     is AuthState.LoggedIn -> {
                         val convId = activeConversationId
                         val otherUser = activeConversationUser
-                        if (convId != null && otherUser != null) {
-                            androidx.activity.compose.BackHandler {
-                                activeConversationId = null
-                                activeConversationUser = null
+                        when {
+                            showProfile -> {
+                                androidx.activity.compose.BackHandler { showProfile = false }
+                                ProfileScreen(onBackClick = { showProfile = false })
                             }
-                            ChatScreen(
-                                conversationId = convId,
-                                otherUser = otherUser,
-                                onBackClick = {
+                            convId != null && otherUser != null -> {
+                                androidx.activity.compose.BackHandler {
                                     activeConversationId = null
                                     activeConversationUser = null
                                 }
-                            )
-                        } else {
-                            HomeScreen(
-                                onConversationClick = { id, user ->
-                                    activeConversationId = id
-                                    activeConversationUser = user
-                                },
-                                onSignOut = {
-                                    authViewModel.signOut()
-                                    val db = AppDatabase.getDatabase(this@MainActivity)
-                                    lifecycleScope.launch(Dispatchers.IO) {
-                                        db.clearAllTables()
+                                ChatScreen(
+                                    conversationId = convId,
+                                    otherUser = otherUser,
+                                    onBackClick = {
+                                        activeConversationId = null
+                                        activeConversationUser = null
                                     }
-                                }
-                            )
+                                )
+                            }
+                            else -> {
+                                HomeScreen(
+                                    onConversationClick = { id, user ->
+                                        activeConversationId = id
+                                        activeConversationUser = user
+                                    },
+                                    onProfileClick = { showProfile = true },
+                                    onSignOut = {
+                                        authViewModel.signOut()
+                                        val db = AppDatabase.getDatabase(this@MainActivity)
+                                        lifecycleScope.launch(Dispatchers.IO) {
+                                            db.clearAllTables()
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                     else -> {

@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +46,7 @@ import java.util.*
 fun HomeScreen(
     onConversationClick: (String, UserProfile) -> Unit,
     onSignOut: () -> Unit,
+    onProfileClick: () -> Unit,
     database: AppDatabase = AppDatabase.getDatabase(LocalContext.current)
 ) {
     val currentUserId = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
@@ -63,7 +66,7 @@ fun HomeScreen(
     val conversations by homeViewModel.conversations.collectAsState()
     
     // Only show conversations that actually have a message sent
-    val activeConversations = conversations.filter { it.lastMessage != null && it.lastMessage.text.isNotEmpty() }
+    val activeConversations = conversations.filter { val lm = it.lastMessage; lm != null && lm.text.isNotEmpty() }
     
     val profiles by homeViewModel.userProfiles.collectAsState()
     val searchResults by homeViewModel.searchResults.collectAsState()
@@ -71,6 +74,7 @@ fun HomeScreen(
 
     var showSearchDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var showMenu by remember { mutableStateOf(false) }
 
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -93,12 +97,65 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSignOut) {
-                        Icon(
-                            imageVector = Icons.Default.ExitToApp,
-                            contentDescription = "Sign Out",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Color.White
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier
+                                .background(Color(0xFF1A1A2E))
+                                .widthIn(min = 160.dp)
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "Profile",
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Person, null, tint = Color(0xFF6C63FF))
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onProfileClick()
+                                },
+                                colors = MenuDefaults.itemColors(
+                                    textColor = Color.White,
+                                    leadingIconColor = Color(0xFF6C63FF)
+                                )
+                            )
+                            HorizontalDivider(color = Color(0xFF2E2E3E), thickness = 0.5.dp)
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "Logout",
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.ExitToApp, null, tint = MaterialTheme.colorScheme.error)
+                                },
+                                onClick = {
+                                    showMenu = false
+                                    onSignOut()
+                                },
+                                colors = MenuDefaults.itemColors(
+                                    textColor = MaterialTheme.colorScheme.error,
+                                    leadingIconColor = MaterialTheme.colorScheme.error
+                                )
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -384,10 +441,13 @@ fun ConversationItem(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Last message body
-            val lastMsgText = when {
-                conversation.lastMessage == null -> "No messages yet"
-                conversation.lastMessage.senderId == currentUserId -> "You: ${conversation.lastMessage.text}"
-                else -> conversation.lastMessage.text
+            val lastMsgText = run {
+                val lm = conversation.lastMessage
+                when {
+                    lm == null -> "No messages yet"
+                    lm.senderId == currentUserId -> "You: ${lm.text}"
+                    else -> lm.text
+                }
             }
 
             Text(

@@ -46,5 +46,12 @@ interface ApiRepository {
         contentType: String
     ): UploadResponse
 
+    suspend fun updateUserProfile(
+        idToken: String,
+        displayName: String,
+        bio: String,
+        photoUrl: String
+    )
+
     suspend fun registerFcmToken(token: String, fcmToken: String)
 }
