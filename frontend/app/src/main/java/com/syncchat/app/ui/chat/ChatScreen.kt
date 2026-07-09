@@ -608,14 +608,31 @@ fun MessageBubble(message: Message, isMe: Boolean) {
                                 .clickable {
                                     try {
                                         val url = message.mediaUrl ?: ""
+                                        val safeUrl = if (url.startsWith("http://")) {
+                                            url.replace("http://", "https://")
+                                        } else {
+                                            url
+                                        }
                                         val intent = android.content.Intent(
                                             android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse(url)
+                                            android.net.Uri.parse(safeUrl)
                                         )
                                         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(intent)
+                                        try {
+                                            context.startActivity(intent)
+                                        } catch (ex: Exception) {
+                                            // Fallback: force open in web browser
+                                            val webIntent = android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(safeUrl)
+                                            ).apply {
+                                                addCategory(android.content.Intent.CATEGORY_BROWSABLE)
+                                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(webIntent)
+                                        }
                                     } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "No app found to open this file", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, "No browser or viewer app found to open this link", android.widget.Toast.LENGTH_SHORT).show()
                                     }
                                 }
                                 .padding(12.dp)

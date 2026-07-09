@@ -45,6 +45,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
 
@@ -106,12 +107,11 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                     val client = OkHttpClient()
                     val requestBody = MultipartBody.Builder()
                         .setType(MultipartBody.FORM)
-                        .addFormDataPart("file", "photo.jpg", RequestBody.create("image/jpeg".toMediaTypeOrNull(), bytes))
+                        .addFormDataPart("file", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaTypeOrNull()))
                         .addFormDataPart("upload_preset", "syncchat_preset")
-                        .addFormDataPart("resource_type", "image")
                         .build()
                     val request = Request.Builder()
-                        .url("https://api.cloudinary.com/v1_1/ddfougzkl/image/upload")
+                        .url("https://api.cloudinary.com/v1_1/ddfougzkl/auto/upload")
                         .post(requestBody)
                         .build()
                     val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
@@ -120,9 +120,11 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                         val url = JSONObject(body).getString("secure_url")
                         photoUrl = url
                     } else {
+                        selectedPhotoUri = null
                         Toast.makeText(context, "Photo upload failed", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
+                    selectedPhotoUri = null
                     Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 } finally {
                     isUploadingPhoto = false
@@ -204,12 +206,36 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                 }
             }
 
+            // Display Name (Username)
+            Text(
+                text = displayName.ifEmpty { "No name set" },
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            // Email
             Text(
                 text = user?.email ?: "",
                 color = Color.Gray,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 32.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             )
+
+            // Bio
+            if (bio.isNotEmpty()) {
+                Text(
+                    text = bio,
+                    color = Color(0xFFB0AFFF),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Normal,
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            } else {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // --- Profile Info Card ---
             Card(
@@ -246,6 +272,7 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                                         .apply { if (photoUrl.isNotEmpty()) setPhotoUri(Uri.parse(photoUrl)) }
                                         .build()
                                     user?.updateProfile(profileUpdates)?.await()
+                                    user?.reload()?.await() // Refresh cached user object
 
                                     // Update backend
                                     val idToken = FirebaseAuthRepository().getIdToken()
