@@ -65,8 +65,8 @@ class HomeViewModel(
                 conversations.collect { list ->
                     list.forEach { conv ->
                         val otherUid = conv.participantUids.firstOrNull { it != currentUserId }
-                        if (otherUid != null && !_userProfiles.value.containsKey(otherUid)) {
-                            fetchUserProfile(otherUid)
+                        if (otherUid != null) {
+                            listenToUserProfile(otherUid)
                         }
                     }
                 }
@@ -143,8 +143,8 @@ class HomeViewModel(
 
                         // Resolve other participant profiles
                         val otherUid = participantUids.firstOrNull { it != currentUserId }
-                        if (otherUid != null && !_userProfiles.value.containsKey(otherUid)) {
-                            fetchUserProfile(otherUid)
+                        if (otherUid != null) {
+                            listenToUserProfile(otherUid)
                         }
                     } catch (e: Exception) {
                         Log.e("HomeViewModel", "Error parsing conversation doc ${doc.id}", e)
@@ -235,61 +235,61 @@ class HomeViewModel(
         }
     }
 
-    private fun fetchUserProfile(uid: String) {
-        viewModelScope.launch {
-            try {
-                // 1. Try to load from Room local database first (instant display)
-                val localUser = withContext(Dispatchers.IO) {
-                    database.userDao().getUserById(uid)
-                }
-                if (localUser != null) {
-                    val profile = localUser.toDomain()
-                    val updatedMap = _userProfiles.value.toMutableMap()
-                    updatedMap[uid] = profile
-                    _userProfiles.value = updatedMap
-                }
+    private val profileListeners = mutableMapOf<String, ListenerRegistration>()
 
-                // 2. Try to fetch from Firestore in background to ensure it is fresh
-                var profile: UserProfile? = null
+    private fun listenToUserProfile(uid: String) {
+        if (uid.isEmpty()) return
+        synchronized(profileListeners) {
+            if (profileListeners.containsKey(uid)) return
+
+            // 1. Try to load from Room local database first (instant display)
+            viewModelScope.launch {
                 try {
-                    val doc = firestore.collection("users").document(uid).get().await()
-                    if (doc.exists()) {
-                        profile = UserProfile(
-                            uid = doc.id,
-                            displayName = doc.getString("displayName") ?: "",
-                            email = doc.getString("email") ?: "",
-                            photoUrl = doc.getString("photoUrl"),
-                            isOnline = doc.getBoolean("isOnline") ?: false
-                        )
+                    val localUser = withContext(Dispatchers.IO) {
+                        database.userDao().getUserById(uid)
+                    }
+                    if (localUser != null) {
+                        val profile = localUser.toDomain()
+                        val updatedMap = _userProfiles.value.toMutableMap()
+                        if (!updatedMap.containsKey(uid)) {
+                            updatedMap[uid] = profile
+                            _userProfiles.value = updatedMap
+                        }
                     }
                 } catch (e: Exception) {
-                    Log.w("HomeViewModel", "Direct Firestore fetch failed for $uid, falling back to API", e)
+                    Log.e("HomeViewModel", "Failed to load local profile for $uid", e)
                 }
-
-                // 3. Try to fall back to backend API if Firestore was unsuccessful/unavailable
-                if (profile == null) {
-                    try {
-                        val token = authRepository.getIdToken()
-                        if (token != null) {
-                            profile = apiRepository.getUserProfile(token, uid)
-                        }
-                    } catch (apiEx: Exception) {
-                        Log.e("HomeViewModel", "Backend API fallback failed for $uid", apiEx)
-                    }
-                }
-
-                // 4. Save to Room cache and update UI if we successfully fetched the profile
-                if (profile != null) {
-                    withContext(Dispatchers.IO) {
-                        database.userDao().insertUser(CachedUser.fromDomain(profile))
-                    }
-                    val updatedMap = _userProfiles.value.toMutableMap()
-                    updatedMap[uid] = profile
-                    _userProfiles.value = updatedMap
-                }
-            } catch (e: Exception) {
-                Log.e("HomeViewModel", "Error in fetchUserProfile for $uid", e)
             }
+
+            // 2. Setup real-time listener
+            val listener = firestore.collection("users").document(uid)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        Log.e("HomeViewModel", "Error listening to profile of $uid", error)
+                        return@addSnapshotListener
+                    }
+                    if (snapshot != null && snapshot.exists()) {
+                        val profile = UserProfile(
+                            uid = snapshot.id,
+                            displayName = snapshot.getString("displayName") ?: "",
+                            email = snapshot.getString("email") ?: "",
+                            photoUrl = snapshot.getString("photoUrl"),
+                            bio = snapshot.getString("bio"),
+                            isOnline = snapshot.getBoolean("isOnline") ?: (_userProfiles.value[uid]?.isOnline ?: false)
+                        )
+
+                        // Save to Room cache
+                        viewModelScope.launch(Dispatchers.IO) {
+                            database.userDao().insertUser(CachedUser.fromDomain(profile))
+                        }
+
+                        // Update UI
+                        val updatedMap = _userProfiles.value.toMutableMap()
+                        updatedMap[uid] = profile
+                        _userProfiles.value = updatedMap
+                    }
+                }
+            profileListeners[uid] = listener
         }
     }
 
@@ -398,5 +398,9 @@ class HomeViewModel(
     override fun onCleared() {
         super.onCleared()
         listenerRegistration?.remove()
+        synchronized(profileListeners) {
+            profileListeners.values.forEach { it.remove() }
+            profileListeners.clear()
+        }
     }
 }
