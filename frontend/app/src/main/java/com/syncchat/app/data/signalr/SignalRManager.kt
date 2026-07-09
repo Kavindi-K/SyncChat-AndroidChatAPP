@@ -41,8 +41,8 @@ class SignalRManager {
     private val RETRY_DELAYS = listOf(2000L, 4000L, 8000L, 16000L, 30000L)
 
     companion object {
-        // Production Railway backend URL
-        private const val HUB_URL = "https://syncchat-androidchatapp-production.up.railway.app/hubs/chat"
+        // Local backend Hub URL for USB debugging/emulation via adb reverse
+        private const val HUB_URL = "http://localhost:5228/hubs/chat"
         private const val TAG = "SignalRManager"
         
         @Volatile

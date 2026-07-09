@@ -76,8 +76,8 @@ public class UsersController : ControllerBase
                 uid,
                 request.DisplayName,
                 request.Email,
-                request.PhotoUrl ?? string.Empty,
-                request.Bio ?? string.Empty,
+                request.PhotoUrl,
+                request.Bio,
                 null); // Ignore FCM tokens in profile sync to prevent overwriting registered tokens
 
             return Ok(new { Success = true, Message = "Profile updated successfully" });

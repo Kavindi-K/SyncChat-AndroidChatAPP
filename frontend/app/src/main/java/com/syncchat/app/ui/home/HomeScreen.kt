@@ -44,6 +44,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalContext
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.syncchat.app.data.local.AppDatabase
 import com.syncchat.app.data.model.Conversation
 import com.syncchat.app.data.model.UserProfile
@@ -61,8 +62,33 @@ fun HomeScreen(
     val currentUser = FirebaseAuth.getInstance().currentUser
     val currentUserId = currentUser?.uid ?: ""
     val currentUserEmail = currentUser?.email ?: ""
-    val currentUserName = currentUser?.displayName ?: "Me"
-    val currentUserPhoto = currentUser?.photoUrl?.toString() ?: ""
+
+    var currentUserProfile by remember { mutableStateOf<UserProfile?>(null) }
+    DisposableEffect(currentUserId) {
+        if (currentUserId.isNotEmpty()) {
+            val docRef = FirebaseFirestore.getInstance().collection("users").document(currentUserId)
+            val listener = docRef.addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    currentUserProfile = UserProfile(
+                        uid = snapshot.id,
+                        displayName = snapshot.getString("displayName") ?: "",
+                        email = snapshot.getString("email") ?: "",
+                        photoUrl = snapshot.getString("photoUrl"),
+                        bio = snapshot.getString("bio"),
+                        isOnline = snapshot.getBoolean("isOnline") ?: false
+                    )
+                }
+            }
+            onDispose {
+                listener.remove()
+            }
+        } else {
+            onDispose {}
+        }
+    }
+
+    val currentUserName = currentUserProfile?.displayName ?: currentUser?.displayName ?: "Me"
+    val currentUserPhoto = currentUserProfile?.photoUrl ?: currentUser?.photoUrl?.toString() ?: ""
 
     val homeViewModel: HomeViewModel = viewModel(
         key = currentUserId,

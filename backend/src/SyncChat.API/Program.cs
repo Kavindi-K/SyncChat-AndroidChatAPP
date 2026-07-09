@@ -54,6 +54,7 @@ if (!isTestEnv)
             if (!string.IsNullOrEmpty(credentialPath) && File.Exists(credentialPath))
             {
                 var fullPath = Path.GetFullPath(credentialPath);
+                Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", fullPath);
 #pragma warning disable CS0618
                 using var stream = File.OpenRead(fullPath);
                 FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.FromStream(stream) });

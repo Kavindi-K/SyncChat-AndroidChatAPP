@@ -103,7 +103,12 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                 try {
                     val bytes = withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.readBytes()
-                    } ?: return@launch
+                    }
+                    if (bytes == null) {
+                        selectedPhotoUri = null
+                        Toast.makeText(context, "Error: Failed to read selected image file", Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
                     val client = OkHttpClient()
                     val requestBody = MultipartBody.Builder()
                         .setType(MultipartBody.FORM)
@@ -114,18 +119,35 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                         .url("https://api.cloudinary.com/v1_1/ddfougzkl/auto/upload")
                         .post(requestBody)
                         .build()
-                    val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
-                    val body = response.body?.string()
-                    if (response.isSuccessful && body != null) {
+                    val uploadResult = withContext(Dispatchers.IO) {
+                        client.newCall(request).execute().use { response ->
+                            val body = response.body?.string()
+                            Triple(response.isSuccessful, response.code, body)
+                        }
+                    }
+                    val isSuccessful = uploadResult.first
+                    val responseCode = uploadResult.second
+                    val body = uploadResult.third
+
+                    if (isSuccessful && body != null) {
                         val url = JSONObject(body).getString("secure_url")
                         photoUrl = url
                     } else {
                         selectedPhotoUri = null
-                        Toast.makeText(context, "Photo upload failed", Toast.LENGTH_SHORT).show()
+                        val errMsg = if (body != null) {
+                            try {
+                                JSONObject(body).getJSONObject("error").getString("message")
+                            } catch (e: Exception) {
+                                body
+                            }
+                        } else "Unknown error"
+                        android.util.Log.e("ProfileScreen", "Upload failed: code=$responseCode body=$body")
+                        Toast.makeText(context, "Upload failed: $errMsg", Toast.LENGTH_LONG).show()
                     }
                 } catch (e: Exception) {
                     selectedPhotoUri = null
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    android.util.Log.e("ProfileScreen", "Upload exception", e)
+                    Toast.makeText(context, "Error: ${e.javaClass.simpleName} - ${e.message ?: e.toString()}", Toast.LENGTH_LONG).show()
                 } finally {
                     isUploadingPhoto = false
                 }
@@ -292,7 +314,7 @@ fun ProfileScreen(onBackClick: () -> Unit) {
                                 }
                             }
                         },
-                        enabled = !isSavingProfile,
+                        enabled = !isSavingProfile && !isUploadingPhoto,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)

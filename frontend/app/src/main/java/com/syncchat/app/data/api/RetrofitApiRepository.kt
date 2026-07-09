@@ -22,8 +22,8 @@ class RetrofitApiRepository : ApiRepository {
             .build()
 
         Retrofit.Builder()
-            // Production Railway backend URL
-            .baseUrl("https://syncchat-androidchatapp-production.up.railway.app/")
+            // Local backend URL for USB debugging/emulation via adb reverse
+            .baseUrl("http://localhost:5228/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -106,8 +106,8 @@ class RetrofitApiRepository : ApiRepository {
                 request = UpsertProfileRequest(
                     displayName = displayName,
                     email = email,
-                    photoUrl = photoUrl.ifEmpty { null },
-                    bio = bio.ifEmpty { null }
+                    photoUrl = photoUrl,
+                    bio = bio
                 )
             )
         } catch (e: Exception) {
