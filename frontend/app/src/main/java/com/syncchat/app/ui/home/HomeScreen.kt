@@ -12,12 +12,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
@@ -45,7 +50,7 @@ import com.syncchat.app.data.model.UserProfile
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     onConversationClick: (String, UserProfile) -> Unit,
@@ -82,123 +87,187 @@ fun HomeScreen(
     var searchQuery by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
 
+    var selectedConversationIds by remember { mutableStateOf(setOf<String>()) }
+    var isInSelectionMode by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var conversationToDelete by remember { mutableStateOf<String?>(null) }
+    var showLongPressMenu by remember { mutableStateOf(false) }
+    var longPressedConversation by remember { mutableStateOf<Conversation?>(null) }
+
     val keyboardController = LocalSoftwareKeyboardController.current
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Profile photo avatar
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    androidx.compose.ui.graphics.Brush.linearGradient(
-                                        listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (currentUserPhoto.isNotEmpty()) {
-                                AsyncImage(
-                                    model = currentUserPhoto,
-                                    contentDescription = "Profile Photo",
-                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Text(
-                                    text = (currentUserName.firstOrNull()?.uppercaseChar() ?: "?").toString(),
-                                    color = Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "SyncChat",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = currentUserName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { showMenu = true }) {
+            if (isInSelectionMode) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedConversationIds.size} selected",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            selectedConversationIds = emptySet()
+                            isInSelectionMode = false
+                        }) {
                             Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More options",
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear Selection",
                                 tint = Color.White
                             )
                         }
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            modifier = Modifier
-                                .background(Color(0xFF1A1A2E))
-                                .widthIn(min = 160.dp)
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "Profile",
-                                        color = Color.White,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Person, null, tint = Color(0xFF6C63FF))
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    onProfileClick()
-                                },
-                                colors = MenuDefaults.itemColors(
-                                    textColor = Color.White,
-                                    leadingIconColor = Color(0xFF6C63FF)
-                                )
-                            )
-                            HorizontalDivider(color = Color(0xFF2E2E3E), thickness = 0.5.dp)
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "Logout",
-                                        color = MaterialTheme.colorScheme.error,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.ExitToApp, null, tint = MaterialTheme.colorScheme.error)
-                                },
-                                onClick = {
-                                    showMenu = false
-                                    onSignOut()
-                                },
-                                colors = MenuDefaults.itemColors(
-                                    textColor = MaterialTheme.colorScheme.error,
-                                    leadingIconColor = MaterialTheme.colorScheme.error
-                                )
+                    },
+                    actions = {
+                        val anyUnpinned = activeConversations
+                            .filter { selectedConversationIds.contains(it.id) }
+                            .any { !it.isPinned }
+
+                        IconButton(onClick = {
+                            selectedConversationIds.forEach { id ->
+                                homeViewModel.pinConversation(id, anyUnpinned)
+                            }
+                            selectedConversationIds = emptySet()
+                            isInSelectionMode = false
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = if (anyUnpinned) "Pin" else "Unpin",
+                                tint = if (anyUnpinned) Color.White else Color(0xFFFFD700)
                             )
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F0F1A)
+
+                        IconButton(onClick = {
+                            showDeleteConfirmDialog = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Selected",
+                                tint = Color.Red
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFF1E1E2E)
+                    )
                 )
-            )
+            } else {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Profile photo avatar
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.linearGradient(
+                                            listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (currentUserPhoto.isNotEmpty()) {
+                                    AsyncImage(
+                                        model = currentUserPhoto,
+                                        contentDescription = "Profile Photo",
+                                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Text(
+                                        text = (currentUserName.firstOrNull()?.uppercaseChar() ?: "?").toString(),
+                                        color = Color.White,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "SyncChat",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = currentUserName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { showMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More options",
+                                    tint = Color.White
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                                modifier = Modifier
+                                    .background(Color(0xFF1A1A2E))
+                                    .widthIn(min = 160.dp)
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Profile",
+                                            color = Color.White,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Person, null, tint = Color(0xFF6C63FF))
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        onProfileClick()
+                                    },
+                                    colors = MenuDefaults.itemColors(
+                                        textColor = Color.White,
+                                        leadingIconColor = Color(0xFF6C63FF)
+                                    )
+                                )
+                                HorizontalDivider(color = Color(0xFF2E2E3E), thickness = 0.5.dp)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Logout",
+                                            color = MaterialTheme.colorScheme.error,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.ExitToApp, null, tint = MaterialTheme.colorScheme.error)
+                                    },
+                                    onClick = {
+                                        showMenu = false
+                                        onSignOut()
+                                    },
+                                    colors = MenuDefaults.itemColors(
+                                        textColor = MaterialTheme.colorScheme.error,
+                                        leadingIconColor = MaterialTheme.colorScheme.error
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFF0F0F1A)
+                    )
+                )
+            }
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -260,12 +329,34 @@ fun HomeScreen(
                             email = ""
                         )
 
+                        val isSelected = selectedConversationIds.contains(conversation.id)
                         ConversationItem(
                             conversation = conversation,
                             otherProfile = otherProfile,
                             currentUserId = currentUserId,
+                            isSelected = isSelected,
+                            isInSelectionMode = isInSelectionMode,
                             onClick = {
-                                onConversationClick(conversation.id, otherProfile)
+                                if (isInSelectionMode) {
+                                    val nextSelected = selectedConversationIds.toMutableSet()
+                                    if (nextSelected.contains(conversation.id)) {
+                                        nextSelected.remove(conversation.id)
+                                    } else {
+                                        nextSelected.add(conversation.id)
+                                    }
+                                    selectedConversationIds = nextSelected
+                                    if (nextSelected.isEmpty()) {
+                                        isInSelectionMode = false
+                                    }
+                                } else {
+                                    onConversationClick(conversation.id, otherProfile)
+                                }
+                            },
+                            onLongClick = {
+                                if (!isInSelectionMode) {
+                                    longPressedConversation = conversation
+                                    showLongPressMenu = true
+                                }
                             }
                         )
                     }
@@ -399,6 +490,126 @@ fun HomeScreen(
             }
         }
     }
+
+    // Long Press Actions Overlay
+    if (showLongPressMenu && longPressedConversation != null) {
+        val conv = longPressedConversation!!
+        val otherUid = conv.participantUids.firstOrNull { it != currentUserId }
+        val otherProfile = profiles[otherUid]
+        val displayName = otherProfile?.displayName ?: "Chat"
+        
+        AlertDialog(
+            onDismissRequest = { showLongPressMenu = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text(text = displayName, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showLongPressMenu = false
+                                homeViewModel.pinConversation(conv.id, !conv.isPinned)
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Pin",
+                            tint = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(if (conv.isPinned) "Unpin Chat" else "Pin Chat", color = Color.White)
+                    }
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showLongPressMenu = false
+                                isInSelectionMode = true
+                                selectedConversationIds = setOf(conv.id)
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Select",
+                            tint = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text("Select Chat", color = Color.White)
+                    }
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showLongPressMenu = false
+                                conversationToDelete = conv.id
+                                showDeleteConfirmDialog = true
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = Color.Red
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text("Delete Chat", color = Color.Red)
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text("Delete Chat") },
+            text = { Text("Are you sure you want to delete the selected chat(s)? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isInSelectionMode) {
+                            selectedConversationIds.forEach { id ->
+                                homeViewModel.deleteConversation(id)
+                            }
+                            selectedConversationIds = emptySet()
+                            isInSelectionMode = false
+                        } else {
+                            conversationToDelete?.let { id ->
+                                homeViewModel.deleteConversation(id)
+                            }
+                        }
+                        showDeleteConfirmDialog = false
+                        conversationToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteConfirmDialog = false
+                    conversationToDelete = null
+                }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -406,16 +617,28 @@ fun ConversationItem(
     conversation: Conversation,
     otherProfile: UserProfile,
     currentUserId: String,
-    onClick: () -> Unit
+    isSelected: Boolean = false,
+    isInSelectionMode: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
+    val backgroundColor = when {
+        isSelected -> Color(0xFF2E2E4E)
+        else -> Color.Transparent
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(backgroundColor)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Initials Avatar
+        // Initials Avatar with Selection Badge check
         val initials = if (otherProfile.displayName.isNotEmpty()) {
             otherProfile.displayName.split(" ")
                 .mapNotNull { it.firstOrNull() }
@@ -430,13 +653,22 @@ fun ConversationItem(
                     .size(52.dp)
                     .clip(CircleShape)
                     .background(
-                        Brush.linearGradient(
-                            colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
-                        )
+                        if (isSelected) {
+                            Brush.linearGradient(colors = listOf(Color(0xFF4CAF50), Color(0xFF2E7D32)))
+                        } else {
+                            Brush.linearGradient(colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56)))
+                        }
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (!otherProfile.photoUrl.isNullOrEmpty()) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Selected",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else if (!otherProfile.photoUrl.isNullOrEmpty()) {
                     AsyncImage(
                         model = otherProfile.photoUrl,
                         contentDescription = "Profile Photo",
@@ -452,7 +684,7 @@ fun ConversationItem(
                     )
                 }
             }
-            if (otherProfile.isOnline) {
+            if (otherProfile.isOnline && !isSelected) {
                 Box(
                     modifier = Modifier
                         .size(14.dp)
@@ -480,20 +712,32 @@ fun ConversationItem(
                     fontSize = 16.sp,
                     color = Color.White,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
 
-                // Timestamp
-                val timeStr = conversation.lastMessage?.timestamp?.let {
-                    val format = SimpleDateFormat("h:mm a", Locale.getDefault())
-                    format.format(it)
-                } ?: ""
+                // Pinned Indicator & Timestamp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (conversation.isPinned) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Pinned",
+                            tint = Color(0xFFFFD700),
+                            modifier = Modifier.size(16.dp).padding(end = 4.dp)
+                        )
+                    }
+                    
+                    val timeStr = conversation.lastMessage?.timestamp?.let {
+                        val format = SimpleDateFormat("h:mm a", Locale.getDefault())
+                        format.format(it)
+                    } ?: ""
 
-                Text(
-                    text = timeStr,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
+                    Text(
+                        text = timeStr,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))

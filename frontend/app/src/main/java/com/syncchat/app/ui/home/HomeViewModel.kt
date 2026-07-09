@@ -124,7 +124,22 @@ class HomeViewModel(
 
                         val updatedAt = doc.getTimestamp("updatedAt")?.toDate() ?: java.util.Date()
 
-                        list.add(Conversation(id, participantUids, lastMessage, updatedAt))
+                        // Parse pinning and blocking fields
+                        val blockedBy = doc.get("blockedBy") as? List<String> ?: emptyList()
+                        val pinnedBy = doc.get("pinnedBy") as? List<String> ?: emptyList()
+                        val isPinned = pinnedBy.contains(currentUserId)
+                        val isBlocked = blockedBy.contains(currentUserId)
+                        val isBlockedByOther = blockedBy.any { it != currentUserId }
+
+                        list.add(Conversation(
+                            id = id,
+                            participantUids = participantUids,
+                            lastMessage = lastMessage,
+                            updatedAt = updatedAt,
+                            isPinned = isPinned,
+                            isBlocked = isBlocked,
+                            isBlockedByOther = isBlockedByOther
+                        ))
 
                         // Resolve other participant profiles
                         val otherUid = participantUids.firstOrNull { it != currentUserId }
@@ -136,14 +151,86 @@ class HomeViewModel(
                     }
                 }
                 
-                // Sort by updatedAt descending in memory to avoid needing a composite index
-                list.sortByDescending { it.updatedAt }
+                // Sort by pinned, then updatedAt descending
+                list.sortWith(compareByDescending<Conversation> { it.isPinned }.thenByDescending { it.updatedAt })
                 
                 // Save conversations to Room in the background
                 viewModelScope.launch(Dispatchers.IO) {
                     val cached = list.map { CachedConversation.fromDomain(it) }
                     database.conversationDao().insertConversations(cached)
                 }
+            }
+        }
+    }
+
+    fun pinConversation(conversationId: String, pin: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                database.conversationDao().updatePinnedStatus(conversationId, pin)
+                val docRef = firestore.collection("conversations").document(conversationId)
+                if (pin) {
+                    docRef.update("pinnedBy", com.google.firebase.firestore.FieldValue.arrayUnion(currentUserId)).await()
+                } else {
+                    docRef.update("pinnedBy", com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)).await()
+                }
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Pin conversation failed", e)
+            }
+        }
+    }
+
+    fun deleteConversation(conversationId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                database.conversationDao().deleteConversationById(conversationId)
+                database.messageDao().deleteMessagesForConversation(conversationId)
+                val docRef = firestore.collection("conversations").document(conversationId)
+                val doc = docRef.get().await()
+                if (doc.exists()) {
+                    val participants = doc.get("participantUids") as? List<String> ?: emptyList()
+                    val newParticipants = participants.filter { it != currentUserId }
+                    if (newParticipants.isEmpty()) {
+                        docRef.delete().await()
+                    } else {
+                        docRef.update("participantUids", newParticipants).await()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Delete conversation failed", e)
+            }
+        }
+    }
+
+    fun clearChat(conversationId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                database.messageDao().deleteMessagesForConversation(conversationId)
+                val messagesRef = firestore.collection("conversations")
+                    .document(conversationId)
+                    .collection("messages")
+                val snapshot = messagesRef.get().await()
+                firestore.runBatch { batch ->
+                    for (doc in snapshot.documents) {
+                        batch.delete(doc.reference)
+                    }
+                }.await()
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Clear chat failed", e)
+            }
+        }
+    }
+
+    fun blockUser(conversationId: String, block: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val docRef = firestore.collection("conversations").document(conversationId)
+                if (block) {
+                    docRef.update("blockedBy", com.google.firebase.firestore.FieldValue.arrayUnion(currentUserId)).await()
+                } else {
+                    docRef.update("blockedBy", com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)).await()
+                }
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Block user failed", e)
             }
         }
     }

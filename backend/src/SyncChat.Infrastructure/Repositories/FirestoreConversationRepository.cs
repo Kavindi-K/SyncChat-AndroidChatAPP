@@ -153,12 +153,26 @@ public class FirestoreConversationRepository : IConversationRepository
             ? snapshot.GetValue<Timestamp>("updatedAt").ToDateTime()
             : DateTime.UtcNow;
 
+        var blockedBy = new List<string>();
+        if (snapshot.ContainsField("blockedBy"))
+        {
+            var list = snapshot.GetValue<List<object>>("blockedBy");
+            if (list != null)
+            {
+                foreach (var item in list)
+                {
+                    if (item is string s) blockedBy.Add(s);
+                }
+            }
+        }
+
         return new Conversation
         {
             Id = id,
             ParticipantUids = participants.ToArray(),
             LastMessage = lastMsg,
-            UpdatedAt = updatedAt
+            UpdatedAt = updatedAt,
+            BlockedBy = blockedBy.ToArray()
         };
     }
 }

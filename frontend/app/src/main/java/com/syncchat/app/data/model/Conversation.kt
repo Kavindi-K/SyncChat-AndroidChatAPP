@@ -6,7 +6,10 @@ data class Conversation(
     val id: String = "",
     val participantUids: List<String> = emptyList(),
     val lastMessage: LastMessageInfo? = null,
-    val updatedAt: Date = Date()
+    val updatedAt: Date = Date(),
+    val isPinned: Boolean = false,
+    val isBlocked: Boolean = false,
+    val isBlockedByOther: Boolean = false
 )
 
 data class LastMessageInfo(

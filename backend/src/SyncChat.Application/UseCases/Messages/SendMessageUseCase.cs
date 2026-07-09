@@ -42,6 +42,12 @@ public class SendMessageUseCase
             throw new ValidationException("Sender is not a participant in this conversation.");
         }
 
+        // Verify conversation is not blocked by either participant
+        if (conversation.BlockedBy != null && conversation.BlockedBy.Length > 0)
+        {
+            throw new ValidationException("This conversation is blocked.");
+        }
+
         var message = new Message
         {
             Id = Guid.NewGuid().ToString("N"),

@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import com.syncchat.app.data.signalr.SignalRManager
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -71,6 +72,14 @@ class ChatViewModel(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
+        )
+
+    val conversation: StateFlow<com.syncchat.app.data.model.Conversation?> = database.conversationDao().getConversationByIdFlow(conversationId)
+        .map { it?.toDomain() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
         )
 
     private val _isSending = MutableStateFlow(false)
@@ -489,6 +498,78 @@ class ChatViewModel(
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
             inputStream.readBytes()
         } ?: throw Exception("Failed to open input stream for URI: $uri")
+    }
+
+    fun pinConversation(pin: Boolean) {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                database.conversationDao().updatePinnedStatus(conversationId, pin)
+                val docRef = firestore.collection("conversations").document(conversationId)
+                if (pin) {
+                    docRef.update("pinnedBy", com.google.firebase.firestore.FieldValue.arrayUnion(currentUserId)).await()
+                } else {
+                    docRef.update("pinnedBy", com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)).await()
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Pin conversation failed", e)
+            }
+        }
+    }
+
+    fun clearChat() {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                database.messageDao().deleteMessagesForConversation(conversationId)
+                val messagesRef = firestore.collection("conversations")
+                    .document(conversationId)
+                    .collection("messages")
+                val snapshot = messagesRef.get().await()
+                firestore.runBatch { batch ->
+                    for (doc in snapshot.documents) {
+                        batch.delete(doc.reference)
+                    }
+                }.await()
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Clear chat failed", e)
+            }
+        }
+    }
+
+    fun deleteConversation() {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                database.conversationDao().deleteConversationById(conversationId)
+                database.messageDao().deleteMessagesForConversation(conversationId)
+                val docRef = firestore.collection("conversations").document(conversationId)
+                val doc = docRef.get().await()
+                if (doc.exists()) {
+                    val participants = doc.get("participantUids") as? List<String> ?: emptyList()
+                    val newParticipants = participants.filter { it != currentUserId }
+                    if (newParticipants.isEmpty()) {
+                        docRef.delete().await()
+                    } else {
+                        docRef.update("participantUids", newParticipants).await()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Delete conversation failed", e)
+            }
+        }
+    }
+
+    fun blockUser(block: Boolean) {
+        viewModelScope.launch(ioDispatcher) {
+            try {
+                val docRef = firestore.collection("conversations").document(conversationId)
+                if (block) {
+                    docRef.update("blockedBy", com.google.firebase.firestore.FieldValue.arrayUnion(currentUserId)).await()
+                } else {
+                    docRef.update("blockedBy", com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)).await()
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Block user failed", e)
+            }
+        }
     }
 
     override fun onCleared() {

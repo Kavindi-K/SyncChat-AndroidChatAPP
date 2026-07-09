@@ -13,7 +13,10 @@ data class CachedConversation(
     val lastMessageText: String?,
     val lastMessageSenderId: String?,
     val lastMessageTimestamp: Long?,
-    val updatedAtTime: Long
+    val updatedAtTime: Long,
+    val isPinned: Boolean = false,
+    val isBlocked: Boolean = false,
+    val isBlockedByOther: Boolean = false
 ) {
     fun toDomain(): Conversation {
         val participants = if (participantUidsString.isEmpty()) {
@@ -34,7 +37,10 @@ data class CachedConversation(
             id = id,
             participantUids = participants,
             lastMessage = lastMsg,
-            updatedAt = Date(updatedAtTime)
+            updatedAt = Date(updatedAtTime),
+            isPinned = isPinned,
+            isBlocked = isBlocked,
+            isBlockedByOther = isBlockedByOther
         )
     }
 
@@ -46,7 +52,10 @@ data class CachedConversation(
                 lastMessageText = conv.lastMessage?.text,
                 lastMessageSenderId = conv.lastMessage?.senderId,
                 lastMessageTimestamp = conv.lastMessage?.timestamp?.time,
-                updatedAtTime = conv.updatedAt.time
+                updatedAtTime = conv.updatedAt.time,
+                isPinned = conv.isPinned,
+                isBlocked = conv.isBlocked,
+                isBlockedByOther = conv.isBlockedByOther
             )
         }
     }
