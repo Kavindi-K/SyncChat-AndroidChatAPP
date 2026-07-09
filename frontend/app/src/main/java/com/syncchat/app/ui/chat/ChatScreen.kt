@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -88,11 +89,19 @@ fun ChatScreen(
     )
 
     val messages by chatViewModel.messages.collectAsState()
+    val conversation by chatViewModel.conversation.collectAsState()
     val isSending by chatViewModel.isSending.collectAsState()
     val uploadProgress by chatViewModel.uploadProgress.collectAsState()
     val typingUsers by chatViewModel.typingUsers.collectAsState()
     val errorMessage by chatViewModel.errorMessage.collectAsState()
     val liveOtherUser by chatViewModel.recipientUser.collectAsState()
+
+    var showMenu by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var showPinConfirmDialog by remember { mutableStateOf(false) }
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showBlockConfirmDialog by remember { mutableStateOf(false) }
 
     var textInput by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -240,6 +249,60 @@ fun ChatScreen(
                         )
                     }
                 },
+                actions = {
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Color.White
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(Color(0xFF1E1E2E))
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Profile Info", color = Color.White) },
+                                onClick = {
+                                    showMenu = false
+                                    showProfileDialog = true
+                                }
+                            )
+                            val isPinned = conversation?.isPinned == true
+                            DropdownMenuItem(
+                                text = { Text(if (isPinned) "Unpin Chat" else "Pin Chat", color = Color.White) },
+                                onClick = {
+                                    showMenu = false
+                                    showPinConfirmDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Clear Chat", color = Color.White) },
+                                onClick = {
+                                    showMenu = false
+                                    showClearConfirmDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete Chat", color = Color.Red) },
+                                onClick = {
+                                    showMenu = false
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+                            val isBlocked = conversation?.isBlocked == true
+                            DropdownMenuItem(
+                                text = { Text(if (isBlocked) "Unblock User" else "Block User", color = Color.Red) },
+                                onClick = {
+                                    showMenu = false
+                                    showBlockConfirmDialog = true
+                                }
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF0F0F1A)
                 )
@@ -348,12 +411,56 @@ fun ChatScreen(
                 }
             }
 
-            // Bottom Input Bar
-            Surface(
-                color = Color(0xFF1E1E2C),
-                modifier = Modifier.fillMaxWidth(),
-                tonalElevation = 4.dp
-            ) {
+            // Bottom Input Bar or Block Banner
+            val isBlocked = conversation?.isBlocked == true
+            val isBlockedByOther = conversation?.isBlockedByOther == true
+
+            if (isBlocked || isBlockedByOther) {
+                Surface(
+                    color = Color(0xFF1E1E2C),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isBlocked) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = "You blocked this user. ",
+                                    color = Color.LightGray,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Unblock",
+                                    color = Color(0xFF6C63FF),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable {
+                                        chatViewModel.blockUser(false)
+                                    }
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "This user has blocked you.",
+                                color = Color.Gray,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    color = Color(0xFF1E1E2C),
+                    modifier = Modifier.fillMaxWidth(),
+                    tonalElevation = 4.dp
+                ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -523,7 +630,202 @@ fun ChatScreen(
                     }
                 }
             }
+            }
         }
+    }
+
+    // --- Action Dialogs ---
+    if (showProfileDialog) {
+        AlertDialog(
+            onDismissRequest = { showProfileDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text(text = "Profile Info", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val initials = if (liveOtherUser.displayName.isNotEmpty()) {
+                        liveOtherUser.displayName.split(" ")
+                            .mapNotNull { it.firstOrNull() }
+                            .take(2)
+                            .joinToString("")
+                            .uppercase()
+                    } else "?"
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(Color(0xFF6C63FF), Color(0xFF3F3D56))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!liveOtherUser.photoUrl.isNullOrEmpty()) {
+                            AsyncImage(
+                                model = liveOtherUser.photoUrl,
+                                contentDescription = "Profile Photo",
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = initials,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 32.sp
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                       text = liveOtherUser.displayName.ifEmpty { "No Name" },
+                       color = Color.White,
+                       fontWeight = FontWeight.Bold,
+                       fontSize = 20.sp
+                    )
+                    
+                    Text(
+                       text = liveOtherUser.email.ifEmpty { "No Email" },
+                       color = Color.Gray,
+                       fontSize = 14.sp
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text(
+                       text = liveOtherUser.bio?.ifEmpty { "No Bio added" } ?: "No Bio added",
+                       color = Color(0xFFB0AFFF),
+                       fontSize = 15.sp,
+                       textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                       modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showProfileDialog = false }) {
+                    Text("Close", color = Color(0xFF6C63FF))
+                }
+            }
+        )
+    }
+
+    if (showPinConfirmDialog) {
+        val pin = conversation?.isPinned == false
+        AlertDialog(
+            onDismissRequest = { showPinConfirmDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text(text = if (pin) "Pin Chat" else "Unpin Chat") },
+            text = { Text(text = if (pin) "Are you sure you want to pin this chat?" else "Are you sure you want to unpin this chat?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        chatViewModel.pinConversation(pin)
+                        showPinConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6C63FF))
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPinConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text(text = "Clear Chat") },
+            text = { Text(text = "Are you sure you want to clear all messages in this chat?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        chatViewModel.clearChat()
+                        showClearConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text(text = "Delete Chat") },
+            text = { Text(text = "Are you sure you want to delete this chat? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        chatViewModel.deleteConversation()
+                        showDeleteConfirmDialog = false
+                        onBackClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            }
+        )
+    }
+
+    if (showBlockConfirmDialog) {
+        val block = conversation?.isBlocked == false
+        AlertDialog(
+            onDismissRequest = { showBlockConfirmDialog = false },
+            containerColor = Color(0xFF1E1E2E),
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            title = { Text(text = if (block) "Block User" else "Unblock User") },
+            text = { Text(text = if (block) "Are you sure you want to block this user?" else "Are you sure you want to unblock this user?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        chatViewModel.blockUser(block)
+                        showBlockConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBlockConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            }
+        )
     }
 }
 

@@ -8,6 +8,7 @@ public class Conversation
     public string[] ParticipantUids { get; set; } = Array.Empty<string>();
     public LastMessageInfo? LastMessage { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string[] BlockedBy { get; set; } = Array.Empty<string>();
 }
 
 public class LastMessageInfo

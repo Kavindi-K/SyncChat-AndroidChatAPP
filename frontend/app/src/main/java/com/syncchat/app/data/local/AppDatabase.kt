@@ -13,7 +13,7 @@ import com.syncchat.app.data.local.entities.CachedUser
 
 @Database(
     entities = [CachedUser::class, CachedConversation::class, CachedMessage::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
